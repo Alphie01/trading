@@ -461,24 +461,67 @@
                         {% if analysis.news_available %}
                         <div class="tab-pane fade" id="news">
                             <div class="row">
-                                <div class="col-md-6">
+                                <div class="col-md-12">
                                     <h5><i class="fas fa-newspaper me-2"></i>Haber Sentiment Analizi</h5>
-                                    <div class="card news-card">
-                                        <div class="card-body text-center">
-                                            <h6>Genel Sentiment</h6>
-                                            <h3>
-                                                {% set sentiment = analysis.news_analysis.get('news_sentiment', 0) %}
-                                                {% if sentiment > 0.1 %}
-                                                    <i class="fas fa-smile text-white"></i> Pozitif
-                                                {% elif sentiment < -0.1 %}
-                                                    <i class="fas fa-frown text-white"></i> Negatif
-                                                {% else %}
-                                                    <i class="fas fa-meh text-white"></i> Nötr
-                                                {% endif %}
-                                            </h3>
-                                            <small>{{ analysis.news_analysis.get('news_count', 0) }} haber analiz edildi</small>
+                                    
+                                    {% if analysis.news_analysis and analysis.news_analysis.get('news_count', 0) > 0 %}
+                                    <!-- Gerçek Haber Analizi -->
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="card news-card">
+                                                <div class="card-body text-center">
+                                                    <h6>Genel Sentiment</h6>
+                                                    <h3>
+                                                        {% set sentiment = analysis.news_analysis.get('news_sentiment', 0) %}
+                                                        {% if sentiment > 0.1 %}
+                                                            <i class="fas fa-smile text-white"></i> Pozitif
+                                                        {% elif sentiment < -0.1 %}
+                                                            <i class="fas fa-frown text-white"></i> Negatif
+                                                        {% else %}
+                                                            <i class="fas fa-meh text-white"></i> Nötr
+                                                        {% endif %}
+                                                    </h3>
+                                                    <small>{{ analysis.news_analysis.get('news_count', 0) }} haber analiz edildi</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-chart-line me-2"></i>Sentiment Detayı</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <table class="table table-sm">
+                                                        <tr>
+                                                            <td><strong>Sentiment Skoru:</strong></td>
+                                                            <td>{{ "%.3f"|format(analysis.news_analysis.get('news_sentiment', 0)) }}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>Haber Sayısı:</strong></td>
+                                                            <td>{{ analysis.news_analysis.get('news_count', 0) }} haber</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>Analiz Zamanı:</strong></td>
+                                                            <td><small>{{ analysis.news_analysis.get('analysis_time', 'Bilinmiyor') }}</small></td>
+                                                        </tr>
+                                                    </table>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
+                                    
+                                    {% else %}
+                                    <!-- Haber Analizi Yok -->
+                                    <div class="alert alert-info">
+                                        <h6><i class="fas fa-info-circle me-2"></i>Haber Analizi Durumu</h6>
+                                        <p class="mb-2">Bu coin için haber analizi şu anda mevcut değil.</p>
+                                        <ul class="mb-0">
+                                            <li>📰 NewsAPI bağlantısı kontrol ediliyor</li>
+                                            <li>🔍 {{ analysis.symbol }} için haberler aranıyor</li>
+                                            <li>⏱️ Sonraki güncellemede mevcut olabilir</li>
+                                        </ul>
+                                    </div>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>
@@ -488,15 +531,58 @@
                         {% if analysis.whale_available %}
                         <div class="tab-pane fade" id="whale">
                             <div class="row">
-                                <div class="col-md-6">
+                                <div class="col-md-12">
                                     <h5><i class="fas fa-water me-2"></i>Whale Aktivitesi</h5>
-                                    <div class="card whale-card">
-                                        <div class="card-body text-center">
-                                            <h6>Aktivite Skoru</h6>
-                                            <h3>{{ analysis.whale_analysis.get('whale_activity_score', 0) }}/100</h3>
-                                            <small>Son 24 saat</small>
+                                    
+                                    {% if analysis.whale_analysis and analysis.whale_analysis.get('whale_activity_score') is not none %}
+                                    <!-- Gerçek Whale Analizi -->
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="card whale-card">
+                                                <div class="card-body text-center">
+                                                    <h6>Aktivite Skoru</h6>
+                                                    <h3>{{ analysis.whale_analysis.get('whale_activity_score', 0) }}/100</h3>
+                                                    <small>Son 24 saat</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-chart-bar me-2"></i>Whale Detayları</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <table class="table table-sm">
+                                                        <tr>
+                                                            <td><strong>Aktivite Skoru:</strong></td>
+                                                            <td>{{ analysis.whale_analysis.get('whale_activity_score', 0) }}/100</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>Toplam Volume:</strong></td>
+                                                            <td>${{ "{:,.0f}"|format(analysis.whale_analysis.get('total_volume', 0)) }}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>Periyot:</strong></td>
+                                                            <td>Son 24 saat</td>
+                                                        </tr>
+                                                    </table>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
+                                    
+                                    {% else %}
+                                    <!-- Whale Analizi Yok -->
+                                    <div class="alert alert-warning">
+                                        <h6><i class="fas fa-exclamation-triangle me-2"></i>Whale Analizi Durumu</h6>
+                                        <p class="mb-2">Bu coin için whale aktivite analizi şu anda mevcut değil.</p>
+                                        <ul class="mb-0">
+                                            <li>🐋 Whale Alert API bağlantısı kontrol ediliyor</li>
+                                            <li>🔍 {{ analysis.symbol }} için büyük işlemler aranıyor</li>
+                                            <li>⏱️ Sonraki güncellemede mevcut olabilir</li>
+                                        </ul>
+                                    </div>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>
@@ -648,29 +734,116 @@
                         {% if analysis.trade_available %}
                         <div class="tab-pane fade" id="trading">
                             <div class="row">
-                                <div class="col-md-6">
-                                    <h5><i class="fas fa-exchange-alt me-2"></i>Otomatik Trading Sinyali</h5>
-                                    <div class="card" style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);">
-                                        <div class="card-body">
-                                            <h6>Öneri:</h6>
-                                            <h3>
-                                                {% set action = analysis.trade_signal.get('action', 'HOLD') %}
-                                                {% if action == 'LONG' %}
-                                                    <span class="badge bg-success fs-5">
-                                                        <i class="fas fa-arrow-up me-1"></i>LONG
-                                                    </span>
-                                                {% elif action == 'SHORT' %}
-                                                    <span class="badge bg-danger fs-5">
-                                                        <i class="fas fa-arrow-down me-1"></i>SHORT
-                                                    </span>
-                                                {% else %}
-                                                    <span class="badge bg-secondary fs-5">
-                                                        <i class="fas fa-pause me-1"></i>HOLD
-                                                    </span>
-                                                {% endif %}
-                                            </h3>
+                                <div class="col-md-12">
+                                    <h5><i class="fas fa-exchange-alt me-2"></i>Trading Sinyali</h5>
+                                    
+                                    {% if analysis.trade_signal and analysis.trade_signal.get('action') %}
+                                    <!-- Gerçek Trading Sinyali -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-3">
+                                            <div class="card" style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);">
+                                                <div class="card-body text-center text-white">
+                                                    <h6>Trading Aksiyonu</h6>
+                                                    <h3>
+                                                        {% set action = analysis.trade_signal.get('action', 'HOLD') %}
+                                                        {% if action in ['BUY', 'LONG'] %}
+                                                            <i class="fas fa-arrow-up me-1"></i>{{ action }}
+                                                        {% elif action in ['SELL', 'SHORT'] %}
+                                                            <i class="fas fa-arrow-down me-1"></i>{{ action }}
+                                                        {% else %}
+                                                            <i class="fas fa-pause me-1"></i>{{ action }}
+                                                        {% endif %}
+                                                    </h3>
+                                                    <small>Önerilen İşlem</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-success text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Güven Seviyesi</h6>
+                                                    <h3>{{ "%.0f"|format(analysis.trade_signal.get('confidence', 0)) }}%</h3>
+                                                    <small>Sinyal Güvenilirliği</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-info text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Hedef Fiyat</h6>
+                                                    <h3>
+                                                        {% if analysis.trade_signal.get('price_target') %}
+                                                            ${{ "%.6f"|format(analysis.trade_signal.get('price_target')) }}
+                                                        {% else %}
+                                                            -
+                                                        {% endif %}
+                                                    </h3>
+                                                    <small>Price Target</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-warning text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Sinyal Zamanı</h6>
+                                                    <h3><i class="fas fa-clock"></i></h3>
+                                                    <small>
+                                                        {% if analysis.trade_signal.get('timestamp') %}
+                                                            {{ analysis.trade_signal.get('timestamp')[:16] }}
+                                                        {% else %}
+                                                            Şimdi
+                                                        {% endif %}
+                                                    </small>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
+
+                                    <!-- Trading Detayları -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-12">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-lightbulb me-2"></i>Sinyal Gerekçesi</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="alert alert-primary">
+                                                        <h6><i class="fas fa-info-circle me-2"></i>Trading Kararı:</h6>
+                                                        <p class="mb-0">{{ analysis.trade_signal.get('reason', 'Sinyal gerekçesi mevcut değil') }}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Risk Uyarısı -->
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="alert alert-danger">
+                                                <h6><i class="fas fa-exclamation-triangle me-2"></i>⚠️ Risk Uyarısı</h6>
+                                                <ul class="mb-0">
+                                                    <li>Bu sinyal otomatik AI algoritması tarafından oluşturulmuştur</li>
+                                                    <li>Finansal yatırım kararlarınızı kendi araştırmanızla destekleyin</li>
+                                                    <li>Kripto para yatırımları yüksek risk içerir</li>
+                                                    <li>Sadece kaybetmeyi göze alabileceğiniz para ile yatırım yapın</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {% else %}
+                                    <!-- Trading Sinyali Yok -->
+                                    <div class="alert alert-secondary">
+                                        <h6><i class="fas fa-pause me-2"></i>Trading Sinyali: HOLD (Bekle)</h6>
+                                        <p class="mb-2">Şu anda aktif bir trading sinyali bulunmuyor.</p>
+                                        <ul class="mb-0">
+                                            <li>📊 Mevcut piyasa koşulları belirsiz</li>
+                                            <li>⚖️ Model güven seviyesi yetersiz</li>
+                                            <li>⏱️ Daha iyi fırsat beklenmekte</li>
+                                            <li>🔍 Piyasa analizi devam ediyor</li>
+                                        </ul>
+                                    </div>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>

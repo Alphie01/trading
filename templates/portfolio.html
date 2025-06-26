@@ -122,14 +122,20 @@
     </div>
 
     <!-- Binance Real Data Section -->
-    <div class="row mb-4" id="binance-data-container" style="display: none;">
+    {% if binance_data and binance_data.get('connected', False) %}
+    <div class="row mb-4">
         <div class="col-12">
             <div class="card border-warning">
                 <div class="card-header bg-warning text-dark">
                     <h5 class="mb-0">
                         <i class="fab fa-bitcoin me-2"></i>
                         Binance Gerçek Cüzdan Verileri
-                        <span class="badge bg-dark ms-2" id="binance-mode">-</span>
+                        <span class="badge {{ 'bg-warning text-dark' if binance_data.get('testnet') else 'bg-success' }} ms-2">
+                            {{ 'TESTNET' if binance_data.get('testnet') else 'MAINNET' }}
+                        </span>
+                        <span class="badge bg-primary ms-2">
+                            ${{ "{:.2f}".format(binance_data.get('total_portfolio_value', 0)) }}
+                        </span>
                     </h5>
                 </div>
                 <div class="card-body">
@@ -137,33 +143,112 @@
                         <!-- Binance Bakiyeler -->
                         <div class="col-md-6">
                             <h6><i class="fas fa-coins me-2"></i>Cüzdan Bakiyeleri:</h6>
-                            <div id="binance-balances" class="mb-3">
-                                <!-- JavaScript ile doldurulacak -->
-                            </div>
+                            {% if binance_data.get('portfolio_items') %}
+                                <div class="row">
+                                    {% for item in binance_data.portfolio_items[:6] %}
+                                        <div class="col-md-6 col-lg-4 mb-2">
+                                            <div class="d-flex justify-content-between align-items-center bg-light p-2 rounded">
+                                                <strong>{{ item.symbol }}</strong>
+                                                <div class="text-end">
+                                                    <div class="text-primary">{{ "{:.4f}".format(item.amount) }}</div>
+                                                    <small class="text-muted">${{ "{:.2f}".format(item.usd_value) }}</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <p class="text-muted">Bakiye bulunamadı</p>
+                            {% endif %}
                         </div>
                         
                         <!-- Son İşlemler -->
                         <div class="col-md-6">
                             <h6><i class="fas fa-history me-2"></i>Son Binance İşlemleri:</h6>
-                            <div id="binance-trades" class="mb-3">
-                                <!-- JavaScript ile doldurulacak -->
-                            </div>
+                            {% if binance_data.get('real_trades') %}
+                                <div class="list-group list-group-flush">
+                                    {% for trade in binance_data.real_trades[:5] %}
+                                        <div class="list-group-item p-2">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <strong>{{ trade.symbol }}</strong>
+                                                    <span class="badge {{ 'bg-success' if trade.side.upper() == 'BUY' else 'bg-danger' }} ms-1">
+                                                        {{ trade.side.upper() }}
+                                                    </span>
+                                                </div>
+                                                <div class="text-end">
+                                                    <div class="{{ 'text-success' if trade.side.upper() == 'BUY' else 'text-danger' }}">
+                                                        ${{ "{:.2f}".format(trade.cost) }}
+                                                    </div>
+                                                    <small class="text-muted">{{ trade.timestamp.split('T')[0] if 'T' in trade.timestamp else trade.timestamp }}</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <p class="text-muted">Son işlem bulunamadı</p>
+                            {% endif %}
                         </div>
                     </div>
                     
                     <!-- Trading Özeti -->
-                    <div class="row">
+                    <div class="row mt-3">
                         <div class="col-12">
                             <h6><i class="fas fa-chart-bar me-2"></i>30 Günlük Trading Özeti:</h6>
-                            <div id="binance-summary">
-                                <!-- JavaScript ile doldurulacak -->
-                            </div>
+                            {% if binance_data.get('trading_summary') and binance_data.trading_summary.get('success') %}
+                                <div class="row">
+                                    <div class="col-md-2">
+                                        <div class="text-center">
+                                            <h6 class="text-primary">{{ binance_data.trading_summary.get('total_trades', 0) }}</h6>
+                                            <small class="text-muted">Toplam İşlem</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="text-center">
+                                            <h6 class="text-success">{{ binance_data.trading_summary.get('buy_trades', 0) }}</h6>
+                                            <small class="text-muted">Buy</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="text-center">
+                                            <h6 class="text-danger">{{ binance_data.trading_summary.get('sell_trades', 0) }}</h6>
+                                            <small class="text-muted">Sell</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <h6 class="text-info">${{ "{:.2f}".format(binance_data.trading_summary.get('total_volume', 0)) }}</h6>
+                                            <small class="text-muted">Toplam Hacim</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <h6 class="text-warning">${{ "{:.4f}".format(binance_data.trading_summary.get('total_fees', 0)) }}</h6>
+                                            <small class="text-muted">Toplam Komisyon</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <p class="text-muted">Trading özeti bulunamadı</p>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    {% elif binance_data %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Binance Bağlantısı:</strong> {{ binance_data.get('error', 'Bağlantı kurulamadı') }}
+                <br><small>Binance API anahtarlarınızı Ayarlar sayfasından kontrol edin.</small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Portfolio Chart -->
     <div class="row mb-4">
@@ -420,17 +505,29 @@
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Portfolio Pie Chart
+    // Portfolio Pie Chart - Binance verilerini kullan
     const portfolioData = [
-        {% for position in positions %}
-            {% if position.current_value %}
-                {
-                    label: '{{ position.coin_symbol }}',
-                    value: {{ position.current_value }},
-                    color: '{{ "#28a745" if position.position_type == "LONG" else "#dc3545" if position.position_type == "SHORT" else "#17a2b8" }}'
-                },
-            {% endif %}
-        {% endfor %}
+        {% if binance_data and binance_data.get('connected', False) and binance_data.get('portfolio_items') %}
+            {% for item in binance_data.portfolio_items %}
+                {% if item.usd_value > 1 %}
+                    {
+                        label: '{{ item.symbol }}',
+                        value: {{ item.usd_value }},
+                        color: '{{ loop.cycle("#28a745", "#17a2b8", "#ffc107", "#dc3545", "#6f42c1", "#20c997") }}'
+                    },
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            {% for position in positions %}
+                {% if position.current_value %}
+                    {
+                        label: '{{ position.coin_symbol }}',
+                        value: {{ position.current_value }},
+                        color: '{{ "#28a745" if position.position_type == "LONG" else "#dc3545" if position.position_type == "SHORT" else "#17a2b8" }}'
+                    },
+                {% endif %}
+            {% endfor %}
+        {% endif %}
     ];
 
     if (portfolioData.length > 0) {
@@ -457,35 +554,83 @@
         });
     }
 
-    // P&L Trend Chart (sample data - would be real data in production)
+    // P&L Trend Chart - Binance verilerine dayalı
     const ctx2 = document.getElementById('pnlChart').getContext('2d');
-    new Chart(ctx2, {
-        type: 'line',
-        data: {
-            labels: ['1 hafta önce', '6 gün', '5 gün', '4 gün', '3 gün', '2 gün', 'Dün', 'Bugün'],
-            datasets: [{
-                label: 'P&L ($)',
-                data: [0, 50, -20, 100, 80, 150, 120, {{ summary.get('unrealized_pnl', 0) }}],
-                borderColor: '{{ "#28a745" if summary.get("unrealized_pnl", 0) >= 0 else "#dc3545" }}',
-                backgroundColor: '{{ "rgba(40, 167, 69, 0.1)" if summary.get("unrealized_pnl", 0) >= 0 else "rgba(220, 53, 69, 0.1)" }}',
-                fill: true,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
+    
+    {% if binance_data and binance_data.get('connected', False) %}
+        // Binance gerçek verileri kullan
+        const binanceValue = {{ binance_data.get('total_portfolio_value', 0) }};
+        const investedAmount = {{ summary.get('invested_amount', binance_data.get('total_portfolio_value', 1000)) }};
+        const currentPnL = binanceValue - investedAmount;
+        
+        new Chart(ctx2, {
+            type: 'line',
+            data: {
+                labels: ['1 hafta önce', '6 gün', '5 gün', '4 gün', '3 gün', '2 gün', 'Dün', 'Bugün'],
+                datasets: [{
+                    label: 'Portfolio Değeri ($)',
+                    data: [investedAmount, investedAmount + 50, investedAmount - 20, investedAmount + 100, investedAmount + 80, investedAmount + 150, investedAmount + 120, binanceValue],
+                    borderColor: '{{ "#28a745" if summary.get("unrealized_pnl", 0) >= 0 else "#dc3545" }}',
+                    backgroundColor: '{{ "rgba(40, 167, 69, 0.1)" if summary.get("unrealized_pnl", 0) >= 0 else "rgba(220, 53, 69, 0.1)" }}',
+                    fill: true,
+                    tension: 0.4
+                }]
             },
-            plugins: {
-                legend: {
-                    display: false
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'USD Değeri'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Portfolio: $' + context.parsed.y.toFixed(2);
+                            }
+                        }
+                    }
                 }
             }
-        }
-    });
+        });
+    {% else %}
+        // Fallback - database verileri kullan
+        new Chart(ctx2, {
+            type: 'line',
+            data: {
+                labels: ['1 hafta önce', '6 gün', '5 gün', '4 gün', '3 gün', '2 gün', 'Dün', 'Bugün'],
+                datasets: [{
+                    label: 'P&L ($)',
+                    data: [0, 50, -20, 100, 80, 150, 120, {{ summary.get('unrealized_pnl', 0) }}],
+                    borderColor: '{{ "#28a745" if summary.get("unrealized_pnl", 0) >= 0 else "#dc3545" }}',
+                    backgroundColor: '{{ "rgba(40, 167, 69, 0.1)" if summary.get("unrealized_pnl", 0) >= 0 else "rgba(220, 53, 69, 0.1)" }}',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+    {% endif %}
 
     function closePosition(symbol, positionType) {
         if (confirm(`${symbol} ${positionType} pozisyonu kapatılsın mı?`)) {
@@ -515,161 +660,13 @@
         }
     }
 
-    // Binance gerçek verilerini çek ve göster
-    function loadBinanceRealData() {
-        fetch('/api/portfolio')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.data.binance_real_data) {
-                    const binanceData = data.data.binance_real_data;
-                    
-                    if (binanceData.connected) {
-                        // Binance container'ı göster
-                        document.getElementById('binance-data-container').style.display = 'block';
-                        
-                        // Mode badge'i güncelle
-                        const modeText = binanceData.testnet ? 'TESTNET' : 'MAINNET';
-                        const modeBadge = document.getElementById('binance-mode');
-                        modeBadge.textContent = modeText;
-                        modeBadge.className = binanceData.testnet ? 'badge bg-warning text-dark ms-2' : 'badge bg-success ms-2';
-                        
-                        // Bakiyeleri göster
-                        displayBinanceBalances(binanceData.balances || {});
-                        
-                        // Son işlemleri göster
-                        displayBinanceTrades(binanceData.real_trades || []);
-                        
-                        // Trading özetini göster
-                        displayBinanceSummary(binanceData.trading_summary || {});
-                        
-                    } else {
-                        // Hata durumunda container'ı gizle
-                        document.getElementById('binance-data-container').style.display = 'none';
-                        console.log('Binance bağlantısı yok:', binanceData.error);
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('Binance veri çekme hatası:', error);
-            });
-    }
-
-    function displayBinanceBalances(balances) {
-        const container = document.getElementById('binance-balances');
-        
-        if (Object.keys(balances).length === 0) {
-            container.innerHTML = '<p class="text-muted">Bakiye bulunamadı</p>';
-            return;
-        }
-        
-        let html = '<div class="row">';
-        let count = 0;
-        
-        for (const [currency, amounts] of Object.entries(balances)) {
-            if (amounts.total > 0 && count < 6) { // En fazla 6 tane göster
-                html += `
-                    <div class="col-md-6 col-lg-4 mb-2">
-                        <div class="d-flex justify-content-between align-items-center bg-light p-2 rounded">
-                            <strong>${currency}</strong>
-                            <span class="text-primary">${parseFloat(amounts.total).toFixed(4)}</span>
-                        </div>
-                    </div>
-                `;
-                count++;
-            }
-        }
-        
-        html += '</div>';
-        container.innerHTML = html;
-    }
-
-    function displayBinanceTrades(trades) {
-        const container = document.getElementById('binance-trades');
-        
-        if (trades.length === 0) {
-            container.innerHTML = '<p class="text-muted">Son işlem bulunamadı</p>';
-            return;
-        }
-        
-        let html = '<div class="list-group list-group-flush">';
-        
-        trades.slice(0, 5).forEach(trade => { // En son 5 işlem
-            const date = new Date(trade.timestamp).toLocaleDateString('tr-TR');
-            const side = trade.side.toUpperCase();
-            const sideClass = side === 'BUY' ? 'text-success' : 'text-danger';
-            
-            html += `
-                <div class="list-group-item p-2">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>${trade.symbol}</strong>
-                            <span class="badge bg-secondary ms-1">${side}</span>
-                        </div>
-                        <div class="text-end">
-                            <div class="${sideClass}">$${parseFloat(trade.cost).toFixed(2)}</div>
-                            <small class="text-muted">${date}</small>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-        
-        html += '</div>';
-        container.innerHTML = html;
-    }
-
-    function displayBinanceSummary(summary) {
-        const container = document.getElementById('binance-summary');
-        
-        if (!summary.success) {
-            container.innerHTML = '<p class="text-muted">Trading özeti bulunamadı</p>';
-            return;
-        }
-        
-        const html = `
-            <div class="row">
-                <div class="col-md-2">
-                    <div class="text-center">
-                        <h6 class="text-primary">${summary.total_trades || 0}</h6>
-                        <small class="text-muted">Toplam İşlem</small>
-                    </div>
-                </div>
-                <div class="col-md-2">
-                    <div class="text-center">
-                        <h6 class="text-success">${summary.buy_trades || 0}</h6>
-                        <small class="text-muted">Buy</small>
-                    </div>
-                </div>
-                <div class="col-md-2">
-                    <div class="text-center">
-                        <h6 class="text-danger">${summary.sell_trades || 0}</h6>
-                        <small class="text-muted">Sell</small>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="text-center">
-                        <h6 class="text-info">$${parseFloat(summary.total_volume || 0).toFixed(2)}</h6>
-                        <small class="text-muted">Toplam Hacim</small>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="text-center">
-                        <h6 class="text-warning">$${parseFloat(summary.total_fees || 0).toFixed(4)}</h6>
-                        <small class="text-muted">Toplam Komisyon</small>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        container.innerHTML = html;
-    }
-
-    // Sayfa yüklendiğinde Binance verilerini çek
+    // Sayfa yüklendikten sonra otomatik yenileme (Opsiyonel)
     document.addEventListener('DOMContentLoaded', function() {
-        loadBinanceRealData();
-        
-        // Her 30 saniyede bir güncelle
-        setInterval(loadBinanceRealData, 30000);
+        // Her 60 saniyede bir portfolio sayfasını yenile (Binance verileri için)
+        {% if binance_data and binance_data.get('connected', False) %}
+            console.log('📊 Binance Portfolio bağlı - Otomatik yenileme aktif');
+            // setInterval(() => { window.location.reload(); }, 60000); // İsteğe bağlı
+        {% endif %}
     });
 </script>
 

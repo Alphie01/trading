@@ -122,6 +122,25 @@ class MSSQLTradingDatabase:
                     state_value NVARCHAR(MAX),
                     last_updated DATETIME2 DEFAULT GETDATE()
                 )
+                """,
+                """
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='prediction_cache' AND xtype='U')
+                CREATE TABLE prediction_cache (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    coin_symbol NVARCHAR(20) NOT NULL,
+                    model_type NVARCHAR(50) NOT NULL,
+                    prediction_data NVARCHAR(MAX) NOT NULL,
+                    technical_analysis NVARCHAR(MAX),
+                    news_analysis NVARCHAR(MAX),
+                    whale_analysis NVARCHAR(MAX),
+                    yigit_analysis NVARCHAR(MAX),
+                    trade_signal NVARCHAR(MAX),
+                    cache_timestamp DATETIME2 DEFAULT GETDATE(),
+                    expires_at DATETIME2,
+                    is_valid BIT DEFAULT 1,
+                    INDEX IX_prediction_cache_symbol_time (coin_symbol, cache_timestamp),
+                    INDEX IX_prediction_cache_expires (expires_at, is_valid)
+                )
                 """
             ]
             
@@ -417,6 +436,157 @@ class MSSQLTradingDatabase:
         except Exception as e:
             print(f"❌ Tüm coin performansları hatası: {str(e)}")
             return []
+
+    def save_prediction_cache(self, coin_symbol: str, model_type: str, 
+                            prediction_data: Dict, technical_analysis: Dict = None,
+                            news_analysis: Dict = None, whale_analysis: Dict = None,
+                            yigit_analysis: Dict = None, trade_signal: Dict = None,
+                            cache_duration_minutes: int = 15) -> bool:
+        """
+        Prediction sonuçlarını cache'e kaydeder
+        
+        Args:
+            coin_symbol: Coin sembolü
+            model_type: Model tipi (LSTM_Only, Multi_Model_Analysis, etc.)
+            prediction_data: Tahmin verileri
+            technical_analysis: Teknik analiz sonuçları
+            news_analysis: Haber analizi sonuçları
+            whale_analysis: Whale analizi sonuçları
+            yigit_analysis: Yigit sinyalleri
+            trade_signal: Trading sinyali
+            cache_duration_minutes: Cache süresi (dakika)
+        
+        Returns:
+            bool: Başarı durumu
+        """
+        try:
+            # Expires timestamp hesapla
+            expires_at = datetime.now() + timedelta(minutes=cache_duration_minutes)
+            
+            # Önceki cache'leri geçersiz kıl
+            self.execute_query(
+                "UPDATE prediction_cache SET is_valid = 0 WHERE coin_symbol = ? AND is_valid = 1",
+                (coin_symbol.upper(),)
+            )
+            
+            # Yeni cache kaydı ekle
+            query = """
+            INSERT INTO prediction_cache (
+                coin_symbol, model_type, prediction_data,
+                technical_analysis, news_analysis, whale_analysis,
+                yigit_analysis, trade_signal, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            
+            params = (
+                coin_symbol.upper(),
+                model_type,
+                json.dumps(prediction_data, default=str, ensure_ascii=False),
+                json.dumps(technical_analysis, default=str, ensure_ascii=False) if technical_analysis else None,
+                json.dumps(news_analysis, default=str, ensure_ascii=False) if news_analysis else None,
+                json.dumps(whale_analysis, default=str, ensure_ascii=False) if whale_analysis else None,
+                json.dumps(yigit_analysis, default=str, ensure_ascii=False) if yigit_analysis else None,
+                json.dumps(trade_signal, default=str, ensure_ascii=False) if trade_signal else None,
+                expires_at
+            )
+            
+            self.execute_query(query, params)
+            print(f"💾 {coin_symbol} prediction cache kaydedildi (Expires: {expires_at.strftime('%H:%M:%S')})")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Prediction cache kaydetme hatası: {str(e)}")
+            return False
+
+    def get_prediction_cache(self, coin_symbol: str) -> Optional[Dict]:
+        """
+        Geçerli prediction cache'i döndürür
+        
+        Args:
+            coin_symbol: Coin sembolü
+        
+        Returns:
+            Dict: Cache verisi veya None
+        """
+        try:
+            query = """
+            SELECT TOP 1 model_type, prediction_data, technical_analysis,
+                   news_analysis, whale_analysis, yigit_analysis, trade_signal,
+                   cache_timestamp, expires_at
+            FROM prediction_cache 
+            WHERE coin_symbol = ? AND is_valid = 1 AND expires_at > GETDATE()
+            ORDER BY cache_timestamp DESC
+            """
+            
+            result = self.execute_query(query, (coin_symbol.upper(),), fetch=True)
+            
+            if result and len(result) > 0:
+                cache_data = result[0]
+                
+                # JSON verilerini parse et
+                parsed_data = {
+                    'model_type': cache_data['model_type'],
+                    'prediction': json.loads(cache_data['prediction_data']),
+                    'cache_timestamp': cache_data['cache_timestamp'],
+                    'expires_at': cache_data['expires_at'],
+                    'is_cached': True
+                }
+                
+                # Opsiyonel analizleri ekle
+                if cache_data['technical_analysis']:
+                    parsed_data['technical_analysis'] = json.loads(cache_data['technical_analysis'])
+                
+                if cache_data['news_analysis']:
+                    parsed_data['news_analysis'] = json.loads(cache_data['news_analysis'])
+                
+                if cache_data['whale_analysis']:
+                    parsed_data['whale_analysis'] = json.loads(cache_data['whale_analysis'])
+                
+                if cache_data['yigit_analysis']:
+                    parsed_data['yigit_analysis'] = json.loads(cache_data['yigit_analysis'])
+                
+                if cache_data['trade_signal']:
+                    parsed_data['trade_signal'] = json.loads(cache_data['trade_signal'])
+                
+                # Cache yaşını hesapla
+                cache_age = datetime.now() - cache_data['cache_timestamp']
+                print(f"📦 {coin_symbol} cache bulundu (Yaş: {int(cache_age.total_seconds()//60)} dakika)")
+                
+                return parsed_data
+            
+            return None
+            
+        except Exception as e:
+            print(f"❌ Prediction cache okuma hatası: {str(e)}")
+            return None
+
+    def cleanup_expired_cache(self) -> int:
+        """
+        Süresi dolmuş cache kayıtlarını temizler
+        
+        Returns:
+            int: Temizlenen kayıt sayısı
+        """
+        try:
+            # Süresi dolmuş kayıtları geçersiz kıl
+            query = "UPDATE prediction_cache SET is_valid = 0 WHERE expires_at <= GETDATE() AND is_valid = 1"
+            count = self.execute_query(query)
+            
+            if count > 0:
+                print(f"🧹 {count} adet süresi dolmuş cache temizlendi")
+            
+            # Çok eski kayıtları sil (7 gün öncesi)
+            old_cleanup_query = "DELETE FROM prediction_cache WHERE cache_timestamp < DATEADD(day, -7, GETDATE())"
+            old_count = self.execute_query(old_cleanup_query)
+            
+            if old_count > 0:
+                print(f"🗑️ {old_count} adet eski cache kaydı silindi")
+            
+            return count + old_count
+            
+        except Exception as e:
+            print(f"❌ Cache temizleme hatası: {str(e)}")
+            return 0
 
     def test_connection(self) -> bool:
         try:

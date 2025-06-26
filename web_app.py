@@ -420,6 +420,51 @@ class CoinMonitor:
                 logger.warning(f"⚠️ Veritabanı kaydetme hatası: {e}")
                 multi_results['analysis_id'] = None
             
+            # **CRITICAL FIX: Generate technical analysis for multi-model results**
+            lstm_prediction = multi_results.get('lstm_analysis', {}).get('prediction', {})
+            if lstm_prediction and processed_df is not None:
+                technical_analysis = self._generate_technical_analysis(processed_df, lstm_prediction)
+                multi_results['technical_analysis'] = technical_analysis
+                print(f"✅ {coin_symbol} için teknik analiz oluşturuldu (Multi-model)")
+            else:
+                technical_analysis = {}
+                print(f"⚠️ {coin_symbol} için teknik analiz oluşturulamadı")
+            
+            # **CRITICAL FIX: Generate trading signal**
+            ensemble_rec = multi_results.get('ensemble_recommendation', {})
+            trade_signal = {}
+            
+            if ensemble_rec and 'action' in ensemble_rec:
+                trade_signal = {
+                    'action': ensemble_rec.get('action', 'HOLD'),
+                    'confidence': ensemble_rec.get('confidence', 50.0),
+                    'reason': ensemble_rec.get('reasoning', 'Ensemble recommendation'),
+                    'price_target': ensemble_rec.get('price_target'),
+                    'timestamp': datetime.now().isoformat()
+                }
+                print(f"📈 {coin_symbol} trading sinyali: {trade_signal['action']} (Güven: {trade_signal['confidence']:.1f}%)")
+            else:
+                # Default trading signal based on LSTM prediction
+                if lstm_prediction:
+                    price_change = lstm_prediction.get('price_change_percent', 0)
+                    confidence = lstm_prediction.get('confidence', 50.0)
+                    
+                    if price_change > 2 and confidence > 60:
+                        action = 'BUY'
+                    elif price_change < -2 and confidence > 60:
+                        action = 'SELL'
+                    else:
+                        action = 'HOLD'
+                    
+                    trade_signal = {
+                        'action': action,
+                        'confidence': confidence,
+                        'reason': f'LSTM prediction: {price_change:+.1f}% expected change',
+                        'price_target': lstm_prediction.get('predicted_price'),
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    print(f"📊 {coin_symbol} LSTM trading sinyali: {action} (Değişim: {price_change:+.1f}%)")
+
             # Web UI için format
             result = {
                 'success': True,
@@ -428,13 +473,13 @@ class CoinMonitor:
                 'timestamp': datetime.now().isoformat(),
                 'multi_model_results': multi_results,
                 
-                # Backward compatibility için mevcut format
-                'prediction': multi_results.get('lstm_analysis', {}).get('prediction', {}),
-                'technical_analysis': multi_results.get('technical_analysis', {}),
+                # Backward compatibility için mevcut format - FIXED
+                'prediction': lstm_prediction,
+                'technical_analysis': technical_analysis,
                 'news_analysis': multi_results.get('news_analysis', {}),
                 'whale_analysis': multi_results.get('whale_analysis', {}),
                 'yigit_analysis': multi_results.get('yigit_analysis', {}),
-                'trade_signal': multi_results.get('ensemble_recommendation', {}),
+                'trade_signal': trade_signal,
                 'analysis_id': multi_results.get('analysis_id'),
                 
                 # New multi-model specific fields
@@ -835,6 +880,55 @@ def logout():
     return redirect(url_for('login'))
 
 # Web Routes
+def get_coins_with_live_data():
+    """Aktif coinler için canlı fiyat ve 24h değişimi çekip coins tablosunu günceller"""
+    try:
+        # Veritabanından aktif coinleri al
+        coins = db.get_active_coins()
+        updated_coins = []
+        
+        for coin in coins:
+            symbol = coin['symbol']
+            try:
+                # Canlı fiyat ve 24h değişimi çek
+                ticker = data_fetcher.exchange.fetch_ticker(f"{symbol}/USDT")
+                
+                current_price = ticker['last']
+                price_change_24h = ticker['percentage']
+                
+                # Coins tablosunu güncelle
+                try:
+                    query = """
+                    UPDATE coins SET 
+                        current_price = ?,
+                        price_change_24h = ?,
+                        last_analysis = GETDATE()
+                    WHERE symbol = ?
+                    """
+                    db.execute_query(query, (current_price, price_change_24h, symbol))
+                    print(f"💰 {symbol}: ${current_price:.2f} ({price_change_24h:+.2f}%)")
+                except Exception as update_error:
+                    print(f"⚠️ {symbol} coins tablosu güncelleme hatası: {update_error}")
+                
+                # Güncel veriyi listeye ekle
+                coin_updated = coin.copy()
+                coin_updated['current_price'] = current_price
+                coin_updated['price_change_24h'] = price_change_24h
+                updated_coins.append(coin_updated)
+                
+            except Exception as price_error:
+                print(f"⚠️ {symbol} canlı fiyat çekme hatası: {price_error}")
+                # Hata varsa eski veriyi koru
+                updated_coins.append(coin)
+        
+        print(f"📊 {len(updated_coins)} coin için canlı fiyat güncellendi")
+        return updated_coins
+        
+    except Exception as e:
+        print(f"❌ Canlı fiyat güncelleme genel hatası: {e}")
+        # Hata varsa eski veriyi döndür
+        return db.get_active_coins()
+
 @app.route('/')
 @login_required
 def dashboard():
@@ -846,8 +940,8 @@ def dashboard():
         # Portfolio özeti
         portfolio = db.get_portfolio_summary()
         
-        # Aktif coinler
-        coins = db.get_active_coins()
+        # Aktif coinler - Canlı fiyat güncellemesi ile
+        coins = get_coins_with_live_data()
         
         # Son işlemler
         recent_trades = db.get_recent_trades(10)
@@ -976,104 +1070,260 @@ def analyze_coin_route(symbol):
     try:
         symbol = symbol.upper()
         
-        # Son 15 dakika içinde analiz yapılmış mı kontrol et
-        recent_analysis = None
+        # **NEW: Database-based cache kontrolü**
+        cached_analysis = None
         try:
-            coins = db.get_active_coins()
-            target_coin = next((coin for coin in coins if coin['symbol'] == symbol), None)
+            # Cache temizle (süresi dolmuş olanları)
+            db.cleanup_expired_cache()
             
-            if target_coin and target_coin.get('last_analysis'):
-                # last_analysis stringi datetime'a çevir
-                if isinstance(target_coin['last_analysis'], str):
-                    try:
-                        last_analysis_time = datetime.fromisoformat(target_coin['last_analysis'].replace('Z', '+00:00'))
-                    except:
-                        try:
-                            last_analysis_time = datetime.strptime(target_coin['last_analysis'], '%Y-%m-%d %H:%M:%S')
-                        except:
-                            last_analysis_time = None
-                else:
-                    last_analysis_time = target_coin['last_analysis']
+            # Geçerli cache var mı kontrol et
+            cached_analysis = db.get_prediction_cache(symbol)
+            
+            if cached_analysis:
+                cache_age = datetime.now() - cached_analysis['cache_timestamp']
+                print(f"📦 {symbol} için geçerli cache bulundu (Yaş: {int(cache_age.total_seconds()//60)} dakika)")
+                flash(f'{symbol} için cache\'den analiz gösteriliyor (Yaş: {int(cache_age.total_seconds()//60)} dakika)', 'info')
+            else:
+                print(f"🔄 {symbol} için geçerli cache bulunamadı, yeni analiz yapılacak")
                 
-                # 15 dakika kontrolü
-                if last_analysis_time:
-                    now = datetime.now()
-                    if hasattr(last_analysis_time, 'tzinfo') and last_analysis_time.tzinfo:
-                        # timezone aware datetime ise UTC'ye çevir
-                        now = datetime.utcnow()
-                        last_analysis_time = last_analysis_time.replace(tzinfo=None)
-                    
-                    time_diff = now - last_analysis_time
-                    
-                    # 15 dakika = 900 saniye
-                    if time_diff.total_seconds() < 900:  # 15 dakika
-                        print(f"⚡ {symbol} için son analiz {time_diff.total_seconds():.0f} saniye önce yapıldı, cache'den gösteriliyor...")
-                        
-                        # Son analizi database'den çek
-                        analysis_history = db.get_analysis_history(symbol, limit=1)
-                        if analysis_history and len(analysis_history) > 0:
-                            recent_analysis = analysis_history[0]
-                            flash(f'{symbol} için mevcut analiz gösteriliyor (Son analiz: {int(time_diff.total_seconds()//60)} dakika önce)', 'info')
         except Exception as e:
-            print(f"⚠️ Son analiz kontrolü hatası: {str(e)}")
-            # Hata varsa yeni analiz yap
-            pass
+            print(f"⚠️ Database cache kontrolü hatası: {str(e)}")
+            cached_analysis = None
         
-        # Eğer son analiz var ve fresh ise, onu kullan
-        if recent_analysis:
+        # Eğer geçerli cache var ise, onu kullan
+        if cached_analysis:
             # **CRITICAL FIX: Ensure current_price is always available in cached results**
-            cached_prediction = recent_analysis.get('prediction', {})
+            cached_prediction = cached_analysis.get('prediction', {})
             
-            # If current_price is missing from cached prediction, fetch it fresh
-            if 'current_price' not in cached_prediction or not cached_prediction['current_price']:
-                try:
-                    # Fetch fresh price data
-                    df = data_fetcher.fetch_ohlcv_data(f"{symbol}/USDT", timeframe="4h", days=1)
-                    if df is not None and len(df) > 0:
-                        fresh_current_price = df['close'].iloc[-1]
-                        cached_prediction['current_price'] = fresh_current_price
-                        print(f"🔧 Cache'e eksik current_price eklendi: ${fresh_current_price:.6f}")
+            # **CRITICAL FIX: ALWAYS refresh current_price for cached predictions**
+            try:
+                # Fetch fresh price data to update cached current_price
+                df = data_fetcher.fetch_ohlcv_data(f"{symbol}/USDT", timeframe="4h", days=1)
+                if df is not None and len(df) > 0:
+                    fresh_current_price = df['close'].iloc[-1]
+                    old_price = cached_prediction.get('current_price', 0)
+                    cached_prediction['current_price'] = fresh_current_price
+                    
+                    # **NEW: Also update predicted_price proportionally if it exists**
+                    if 'predicted_price' in cached_prediction and old_price > 0:
+                        price_ratio = fresh_current_price / old_price
+                        # Only update if the price change is reasonable (< 20%)
+                        if 0.8 <= price_ratio <= 1.2:
+                            cached_prediction['predicted_price'] = cached_prediction['predicted_price'] * price_ratio
+                            cached_prediction['price_change_percent'] = ((cached_prediction['predicted_price'] - fresh_current_price) / fresh_current_price) * 100
+                            print(f"🔧 Cache updated: ${old_price:.2f} → ${fresh_current_price:.2f} (Ratio: {price_ratio:.3f})")
+                        else:
+                            print(f"⚠️ Price change too large for cached prediction update: {price_ratio:.3f}")
                     else:
-                        # Fallback to a default value
-                        cached_prediction['current_price'] = 0.0
-                        print("⚠️ Fresh price alınamadı, default 0.0 kullanılıyor")
-                except Exception as e:
-                    print(f"⚠️ Fresh price fetch hatası: {e}")
+                        print(f"🔧 Fresh current_price updated in cache: ${fresh_current_price:.6f}")
+                else:
+                    # Fallback to a default value
+                    cached_prediction['current_price'] = cached_prediction.get('current_price', 0.0)
+                    print("⚠️ Fresh price alınamadı, cache'deki fiyat korunuyor")
+            except Exception as e:
+                print(f"⚠️ Fresh price fetch hatası: {e}")
+                # Keep existing price if available
+                if 'current_price' not in cached_prediction:
                     cached_prediction['current_price'] = 0.0
+            
+            # **CRITICAL FIX: Generate missing analyses for cached results**
+            print(f"🔄 Cache'den alınan sonuç için eksik analizler hesaplanıyor...")
+            
+            # Get fresh data for missing analyses
+            try:
+                df = data_fetcher.fetch_ohlcv_data(f"{symbol}/USDT", timeframe="4h", days=30)
+                if df is not None:
+                    # Prepare data for technical analysis
+                    from data_preprocessor import CryptoDataPreprocessor
+                    preprocessor = CryptoDataPreprocessor()
+                    processed_df = preprocessor.prepare_data(df, use_technical_indicators=True)
+                    
+                    # Generate missing technical analysis
+                    technical_analysis = {}
+                    if processed_df is not None and len(processed_df) > 0:
+                        technical_analysis = coin_monitor._generate_technical_analysis(processed_df, cached_prediction)
+                        print("✅ Cache için teknik analiz hesaplandı")
+                    
+                    # Generate missing news analysis
+                    news_analysis = cached_analysis.get('news_analysis', {})
+                    if not news_analysis and coin_monitor.news_analyzer:
+                        try:
+                            news_data = coin_monitor.news_analyzer.fetch_all_news(symbol, days=7)
+                            if news_data:
+                                news_df = coin_monitor.news_analyzer.analyze_news_sentiment_batch(news_data)
+                                if not news_df.empty:
+                                    news_analysis = {
+                                        'news_sentiment': news_df['overall_sentiment'].mean(),
+                                        'news_count': len(news_df),
+                                        'analysis_time': datetime.now().isoformat()
+                                    }
+                                    print("✅ Cache için haber analizi hesaplandı")
+                        except Exception as e:
+                            print(f"⚠️ Cache haber analizi hatası: {e}")
+                    
+                    # Generate missing whale analysis
+                    whale_analysis = cached_analysis.get('whale_analysis', {})
+                    if not whale_analysis and coin_monitor.whale_tracker:
+                        try:
+                            whale_txs = coin_monitor.whale_tracker.fetch_whale_alert_transactions(symbol, 24)
+                            if whale_txs:
+                                whale_data = coin_monitor.whale_tracker.analyze_whale_transactions(whale_txs)
+                                whale_analysis = {
+                                    'whale_activity_score': whale_data.get('whale_activity_score', 0),
+                                    'total_volume': whale_data.get('total_volume', 0)
+                                }
+                                print("✅ Cache için whale analizi hesaplandı")
+                        except Exception as e:
+                            print(f"⚠️ Cache whale analizi hatası: {e}")
+                    
+                    # Generate missing yigit analysis
+                    yigit_analysis = cached_analysis.get('yigit_analysis', {})
+                    if not yigit_analysis and processed_df is not None:
+                        try:
+                            from predictor import CryptoPricePredictor
+                            predictor = CryptoPricePredictor(None, preprocessor, coin_monitor.news_analyzer, coin_monitor.whale_tracker)
+                            yigit_analysis = predictor.analyze_yigit_signals(processed_df)
+                            print("✅ Cache için Yigit analizi hesaplandı")
+                        except Exception as e:
+                            print(f"⚠️ Cache Yigit analizi hatası: {e}")
+                    
+                    # Generate missing trading signal
+                    trade_signal = cached_analysis.get('trade_signal', {})
+                    if not trade_signal and cached_prediction:
+                        price_change = cached_prediction.get('price_change_percent', 0)
+                        confidence = cached_prediction.get('confidence', 50.0)
+                        
+                        if price_change > 2 and confidence > 60:
+                            action = 'BUY'
+                        elif price_change < -2 and confidence > 60:
+                            action = 'SELL'
+                        else:
+                            action = 'HOLD'
+                        
+                        trade_signal = {
+                            'action': action,
+                            'confidence': confidence,
+                            'reason': f'Cached prediction: {price_change:+.1f}% expected change',
+                            'price_target': cached_prediction.get('predicted_price'),
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        print("✅ Cache için trading sinyali oluşturuldu")
+                    
+                else:
+                    technical_analysis = {}
+                    news_analysis = cached_analysis.get('news_analysis', {})
+                    whale_analysis = cached_analysis.get('whale_analysis', {})
+                    yigit_analysis = cached_analysis.get('yigit_analysis', {})
+                    trade_signal = cached_analysis.get('trade_signal', {})
+                    
+            except Exception as e:
+                print(f"⚠️ Cache analiz hesaplama hatası: {e}")
+                technical_analysis = {}
+                news_analysis = cached_analysis.get('news_analysis', {})
+                whale_analysis = cached_analysis.get('whale_analysis', {})
+                yigit_analysis = cached_analysis.get('yigit_analysis', {})
+                trade_signal = cached_analysis.get('trade_signal', {})
+
+            # **CRITICAL FIX: Extract multi-model results from cached prediction_data**
+            prediction_data = cached_analysis.get('prediction', {})
             
             result = {
                 'success': True,
                 'prediction': cached_prediction,
-                'news_analysis': recent_analysis.get('news_analysis'),
-                'whale_analysis': recent_analysis.get('whale_analysis'),
-                'yigit_analysis': recent_analysis.get('yigit_analysis'),
-                'trade_signal': recent_analysis.get('trade_signal'),
-                'timestamp': recent_analysis.get('timestamp'),
+                'technical_analysis': technical_analysis,
+                'news_analysis': news_analysis,
+                'whale_analysis': whale_analysis,
+                'yigit_analysis': yigit_analysis,
+                'trade_signal': trade_signal,
+                'timestamp': cached_analysis.get('cache_timestamp', datetime.now()).isoformat() if isinstance(cached_analysis.get('cache_timestamp'), datetime) else cached_analysis.get('cache_timestamp', datetime.now().isoformat()),
                 'analysis_id': f"cached_{symbol}",
                 'is_cached': True,
-                # **CRITICAL: Add multi-model results from cache with safe defaults**
-                'model_type': recent_analysis.get('model_type', 'LSTM_Only'),
-                'lstm_analysis': recent_analysis.get('lstm_analysis', {}),
-                'dqn_analysis': recent_analysis.get('dqn_analysis', {}),
-                'hybrid_analysis': recent_analysis.get('hybrid_analysis', {}),
-                'ensemble_recommendation': recent_analysis.get('ensemble_recommendation', {}),
-                'model_comparison': recent_analysis.get('model_comparison', {})
+                # **CRITICAL: Extract multi-model results from prediction_data**
+                'model_type': prediction_data.get('model_type', cached_analysis.get('model_type', 'Cached_Analysis')),
+                'lstm_analysis': prediction_data.get('lstm_analysis', {}),
+                'dqn_analysis': prediction_data.get('dqn_analysis', {}),
+                'hybrid_analysis': prediction_data.get('hybrid_analysis', {}),
+                'ensemble_recommendation': prediction_data.get('ensemble_recommendation', {}),
+                'model_comparison': prediction_data.get('model_comparison', {}),
+                'multi_model_results': prediction_data.get('multi_model_results', {})
             }
         else:
-            # **CRITICAL FIX: Use multi-model analysis consistently**
+            # **CRITICAL FIX: Always try multi-model analysis first**
             print(f"🔄 {symbol} için yeni multi-model analiz yapılıyor...")
+            result = None
+            
+            # **IMPROVED: Try multi-model with better error handling**
             try:
+                print(f"🚀 {symbol} Multi-Model Analysis başlatılıyor...")
                 result = coin_monitor.analyze_coin_multi_model(symbol)
-                if not result.get('success', False):
-                    print("⚠️ Multi-model başarısız, LSTM fallback...")
-                    result = coin_monitor.analyze_coin(symbol)
-                    result['model_type'] = 'LSTM_Only'
-                else:
+                
+                if result and result.get('success', False):
                     result['model_type'] = 'Multi_Model_Analysis'
+                    print(f"✅ {symbol} Multi-Model Analysis başarılı!")
+                else:
+                    error_msg = result.get('error', 'Unknown error') if result else 'No result returned'
+                    print(f"❌ Multi-model başarısız: {error_msg}")
+                    result = None
+                    
             except Exception as e:
-                print(f"⚠️ Multi-model hata: {e}, LSTM fallback...")
-                result = coin_monitor.analyze_coin(symbol)
-                result['model_type'] = 'LSTM_Only'
+                print(f"❌ Multi-model exception: {str(e)}")
+                import traceback
+                print(f"🔍 Multi-model traceback: {traceback.format_exc()}")
+                result = None
+            
+            # **Fallback to LSTM-only if multi-model failed**
+            if result is None or not result.get('success', False):
+                print(f"🔄 {symbol} için LSTM-only fallback analizi...")
+                try:
+                    result = coin_monitor.analyze_coin(symbol)
+                    if result and result.get('success', False):
+                        result['model_type'] = 'LSTM_Only'
+                        print(f"✅ {symbol} LSTM-only fallback başarılı!")
+                    else:
+                        print(f"❌ LSTM-only de başarısız!")
+                        result = {
+                            'success': False,
+                            'error': 'Both multi-model and LSTM-only analysis failed',
+                            'model_type': 'Failed'
+                        }
+                except Exception as e:
+                    print(f"❌ LSTM fallback exception: {str(e)}")
+                    result = {
+                        'success': False,
+                        'error': f'Analysis failed: {str(e)}',
+                        'model_type': 'Failed'
+                    }
+        
+        # **NEW: Yeni analiz yapıldıysa cache'e kaydet**
+        if result and result.get('success', False) and not result.get('is_cached', False):
+            try:
+                # **CRITICAL FIX: Multi-model sonuçlarını prediction_data'ya dahil et**
+                enhanced_prediction_data = result.get('prediction', {}).copy()
+                enhanced_prediction_data.update({
+                    'model_type': result.get('model_type', 'Unknown'),
+                    'lstm_analysis': result.get('lstm_analysis', {}),
+                    'dqn_analysis': result.get('dqn_analysis', {}),
+                    'hybrid_analysis': result.get('hybrid_analysis', {}),
+                    'ensemble_recommendation': result.get('ensemble_recommendation', {}),
+                    'model_comparison': result.get('model_comparison', {}),
+                    'multi_model_results': result.get('multi_model_results', {}),
+                    'timestamp': result.get('timestamp', datetime.now().isoformat())
+                })
+                
+                db.save_prediction_cache(
+                    coin_symbol=symbol,
+                    model_type=result.get('model_type', 'Unknown'),
+                    prediction_data=enhanced_prediction_data,
+                    technical_analysis=result.get('technical_analysis', {}),
+                    news_analysis=result.get('news_analysis', {}),
+                    whale_analysis=result.get('whale_analysis', {}),
+                    yigit_analysis=result.get('yigit_analysis', {}),
+                    trade_signal=result.get('trade_signal', {}),
+                    cache_duration_minutes=15
+                )
+                print(f"💾 {symbol} yeni analiz sonucu cache'e kaydedildi (Multi-model: {result.get('model_type', 'Unknown')})")
+            except Exception as cache_error:
+                print(f"⚠️ Cache kaydetme hatası: {cache_error}")
         
         if not result['success']:
             flash(f'{symbol} analizi başarısız: {result.get("error", "Bilinmeyen hata")}', 'error')
@@ -1105,32 +1355,70 @@ def analyze_coin_route(symbol):
         current_price = prediction_data.get('current_price', 0.0)
         predicted_price = prediction_data.get('predicted_price', current_price)
         
-        # Prevent division by zero
+        # **CRITICAL FIX: Always fetch fresh current_price for UI display**
+        try:
+            df = data_fetcher.fetch_ohlcv_data(f"{symbol}/USDT", timeframe="1h", days=1)
+            if df is not None and len(df) > 0:
+                fresh_current_price = df['close'].iloc[-1]
+                
+                # If we have a reasonable current_price from prediction, compare and update
+                if current_price > 0:
+                    old_current = current_price
+                    current_price = fresh_current_price
+                    
+                    # Proportionally adjust predicted_price if needed
+                    if predicted_price > 0 and old_current > 0:
+                        price_ratio = fresh_current_price / old_current
+                        # Only adjust if the change is reasonable (< 20%)
+                        if 0.8 <= price_ratio <= 1.2:
+                            predicted_price = predicted_price * price_ratio
+                            print(f"🔧 UI Template updated: Current ${old_current:.2f} → ${fresh_current_price:.2f}, Predicted adjusted")
+                        else:
+                            print(f"⚠️ Large price change detected: ${old_current:.2f} → ${fresh_current_price:.2f} (No prediction adjustment)")
+                else:
+                    # No valid current_price from prediction, use fresh
+                    current_price = fresh_current_price
+                    predicted_price = current_price * 1.001  # Minimal prediction
+                    print(f"🔧 UI Template: Fresh price used ${current_price:.6f}")
+            else:
+                print("⚠️ Fresh price fetch failed for UI template")
+                if current_price <= 0:
+                    current_price = 1.0
+                    predicted_price = 1.001
+        except Exception as e:
+            print(f"⚠️ UI Template fresh price error: {e}")
+            if current_price <= 0:
+                current_price = 1.0
+                predicted_price = 1.001
+        
+        # Prevent division by zero and calculate price change
         if current_price > 0:
             price_change = ((predicted_price - current_price) / current_price) * 100
         else:
             price_change = 0.0
+        
+        # **CRITICAL FIX: Handle cache vs fresh analysis for multi-model results**
+        if result.get('is_cached', False):
+            # Cache'den gelen sonuçlar için prediction_data'dan multi-model sonuçlarını al
+            lstm_analysis = prediction_data.get('lstm_analysis', {})
+            dqn_analysis = prediction_data.get('dqn_analysis', {})
+            hybrid_analysis = prediction_data.get('hybrid_analysis', {})
+            ensemble_recommendation = prediction_data.get('ensemble_recommendation', {})
+            model_comparison = prediction_data.get('model_comparison', {})
+            multi_model_results = prediction_data.get('multi_model_results', {})
             
-        # If current_price is still 0, try to fetch fresh data
-        if current_price <= 0:
-            try:
-                df = data_fetcher.fetch_ohlcv_data(f"{symbol}/USDT", timeframe="4h", days=1)
-                if df is not None and len(df) > 0:
-                    current_price = df['close'].iloc[-1]
-                    if predicted_price <= 0:
-                        predicted_price = current_price * 1.001  # Minimal prediction
-                    price_change = ((predicted_price - current_price) / current_price) * 100 if current_price > 0 else 0
-                    print(f"🔧 Fresh price alındı ve template data güncellendi: ${current_price:.6f}")
-                else:
-                    current_price = 1.0  # Fallback value
-                    predicted_price = 1.001
-                    price_change = 0.1
-                    print("⚠️ Fresh price alınamadı, fallback değerler kullanılıyor")
-            except Exception as e:
-                print(f"⚠️ Fresh price fetch hatası: {e}")
-                current_price = 1.0
-                predicted_price = 1.001 
-                price_change = 0.1
+            print(f"🔍 CACHE DEBUG - Extracted from prediction_data:")
+            print(f"   LSTM: {bool(lstm_analysis)}")
+            print(f"   DQN: {bool(dqn_analysis)}")
+            print(f"   Hybrid: {bool(hybrid_analysis)}")
+        else:
+            # Fresh analysis için result'dan al
+            lstm_analysis = result.get('lstm_analysis', {})
+            dqn_analysis = result.get('dqn_analysis', {})
+            hybrid_analysis = result.get('hybrid_analysis', {})
+            ensemble_recommendation = result.get('ensemble_recommendation', {})
+            model_comparison = result.get('model_comparison', {})
+            multi_model_results = result.get('multi_model_results', {})
         
         # **CRITICAL: Comprehensive analysis data with multi-model support**
         analysis_data = {
@@ -1148,17 +1436,18 @@ def analyze_coin_route(symbol):
             'prediction_details': prediction_data,
             'technical_analysis': result.get('technical_analysis', {}) or {},
             
-            # **CRITICAL: Multi-model results for template with safe access**
-            'lstm_analysis': result.get('lstm_analysis', {}) or {},
-            'dqn_analysis': result.get('dqn_analysis', {}) or {},
-            'hybrid_analysis': result.get('hybrid_analysis', {}) or {},
-            'ensemble_recommendation': result.get('ensemble_recommendation', {}) or {},
-            'model_comparison': result.get('model_comparison', {}) or {},
+            # **CRITICAL: Multi-model results for template (from cache or fresh)**
+            'lstm_analysis': lstm_analysis or {},
+            'dqn_analysis': dqn_analysis or {},
+            'hybrid_analysis': hybrid_analysis or {},
+            'ensemble_recommendation': ensemble_recommendation or {},
+            'model_comparison': model_comparison or {},
+            'multi_model_results': multi_model_results or {},
             
-            # **CRITICAL: Multi-model availability flags with safe checks**
-            'has_dqn_analysis': bool(result.get('dqn_analysis')) and result.get('dqn_analysis') != {},
-            'has_hybrid_analysis': bool(result.get('hybrid_analysis')) and result.get('hybrid_analysis') != {},
-            'has_ensemble': bool(result.get('ensemble_recommendation')) and result.get('ensemble_recommendation') != {},
+            # **CRITICAL: Multi-model availability flags with corrected checks**
+            'has_dqn_analysis': bool(dqn_analysis) and dqn_analysis != {},
+            'has_hybrid_analysis': bool(hybrid_analysis) and hybrid_analysis != {},
+            'has_ensemble': bool(ensemble_recommendation) and ensemble_recommendation != {},
             
             # **CRITICAL FIX: Always show analysis tabs with safe access**
             # Haber Analizi
@@ -1324,33 +1613,137 @@ def resume_monitoring():
 
 @app.route('/portfolio')
 def portfolio():
-    """Portfolio detay sayfası"""
+    """Portfolio detay sayfası - Binance entegrasyonu ile"""
     try:
-        # Portfolio özeti
+        # Portfolio özeti (database)
         summary = db.get_portfolio_summary()
         
-        # Açık pozisyonlar
+        # Açık pozisyonlar (database) 
         positions = db.get_open_positions()
         
-        # Son 30 günlük işlemler
+        # Son 30 günlük işlemler (database)
         trades = db.get_recent_trades(100)
         
-        # Coin performansları
+        # Coin performansları (database)
         coins = db.get_active_coins()
         coin_performances = []
         for coin in coins:
             perf = db.get_coin_performance(coin['symbol'], 30)
             coin_performances.append(perf)
         
+        # **NEW: Binance gerçek cüzdan verilerini çek**
+        binance_data = {}
+        try:
+            from binance_history import BinanceHistoryFetcher
+            
+            api_key = os.getenv('BINANCE_API_KEY')
+            api_secret = os.getenv('BINANCE_SECRET_KEY')
+            testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
+            
+            if api_key and api_secret:
+                fetcher = BinanceHistoryFetcher(api_key, api_secret, testnet)
+                
+                if fetcher.exchange:
+                    print(f"💰 Binance Portfolio verileri çekiliyor ({'Testnet' if testnet else 'Mainnet'})...")
+                    
+                    # Gerçek hesap bilgileri ve bakiyeler
+                    account_info = fetcher.fetch_account_info()
+                    if 'error' not in account_info:
+                        binance_data['account_info'] = account_info
+                        binance_data['balances'] = account_info.get('balances', {})
+                        
+                        # Portfolio değeri hesapla
+                        total_portfolio_value = 0
+                        portfolio_items = []
+                        
+                        for currency, amounts in binance_data['balances'].items():
+                            if amounts['total'] > 0:
+                                # USD değeri hesapla (basit olarak USDT pairs kullan)
+                                try:
+                                    if currency == 'USDT':
+                                        usd_value = amounts['total']
+                                    elif currency == 'BTC':
+                                        btc_price = data_fetcher.exchange.fetch_ticker('BTC/USDT')['last']
+                                        usd_value = amounts['total'] * btc_price
+                                    elif currency == 'ETH':
+                                        eth_price = data_fetcher.exchange.fetch_ticker('ETH/USDT')['last']
+                                        usd_value = amounts['total'] * eth_price
+                                    else:
+                                        # Diğer coinler için pair kontrol et
+                                        try:
+                                            ticker = data_fetcher.exchange.fetch_ticker(f'{currency}/USDT')
+                                            usd_value = amounts['total'] * ticker['last']
+                                        except:
+                                            usd_value = 0
+                                    
+                                    portfolio_items.append({
+                                        'symbol': currency,
+                                        'amount': amounts['total'],
+                                        'usd_value': usd_value
+                                    })
+                                    total_portfolio_value += usd_value
+                                    
+                                except Exception as price_error:
+                                    print(f"⚠️ {currency} fiyat hesaplama hatası: {price_error}")
+                        
+                        binance_data['portfolio_items'] = portfolio_items
+                        binance_data['total_portfolio_value'] = total_portfolio_value
+                        
+                        # Summary'yi Binance verileriyle güncelle
+                        summary['binance_total_value'] = total_portfolio_value
+                        summary['binance_balance_count'] = len(portfolio_items)
+                    
+                    # Son işlemler
+                    real_trades = fetcher.fetch_trade_history(days=7, limit=10)
+                    binance_data['real_trades'] = real_trades
+                    
+                    # Trading özeti
+                    trading_summary = fetcher.get_trading_summary(days=30)
+                    binance_data['trading_summary'] = trading_summary
+                    
+                    # 24h değişim hesapla (mevcut bakiyelerle)
+                    try:
+                        yesterday_value = total_portfolio_value  # Basit hesaplama
+                        binance_data['portfolio_change_24h'] = 0  # Gerçek hesaplama için historical data gerekli
+                    except:
+                        binance_data['portfolio_change_24h'] = 0
+                    
+                    binance_data['connected'] = True
+                    binance_data['testnet'] = testnet
+                    
+                    print(f"✅ Binance Portfolio: ${total_portfolio_value:.2f} ({len(portfolio_items)} coin)")
+                else:
+                    binance_data['connected'] = False
+                    binance_data['error'] = 'Binance bağlantısı kurulamadı'
+            else:
+                binance_data['connected'] = False
+                binance_data['error'] = 'Binance API anahtarları bulunamadı'
+                
+        except Exception as e:
+            binance_data['connected'] = False
+            binance_data['error'] = str(e)
+            print(f"❌ Binance Portfolio hatası: {e}")
+        
+        # **Enhanced Summary with Binance data**
+        if binance_data.get('connected', False):
+            summary.update({
+                'current_value': binance_data.get('total_portfolio_value', summary.get('current_value', 0)),
+                'unrealized_pnl': binance_data.get('total_portfolio_value', 0) - summary.get('invested_amount', 0),
+                'total_pnl_percent': ((binance_data.get('total_portfolio_value', 0) - summary.get('invested_amount', 0)) / max(summary.get('invested_amount', 1), 1)) * 100,
+                'binance_connected': True
+            })
+        
         return render_template('portfolio.html',
                              summary=summary,
                              positions=positions,
                              trades=trades,
-                             coin_performances=coin_performances)
+                             coin_performances=coin_performances,
+                             binance_data=binance_data)
     except Exception as e:
         flash(f'Portfolio yükleme hatası: {str(e)}', 'error')
         return render_template('portfolio.html',
-                             summary={}, positions=[], trades=[], coin_performances=[])
+                             summary={}, positions=[], trades=[], coin_performances=[],
+                             binance_data={'connected': False, 'error': str(e)})
 
 @app.route('/settings')
 @login_required
