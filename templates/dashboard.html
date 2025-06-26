@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 Kripto Trading Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .crypto-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        .portfolio-card {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        .trade-card {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            color: white;
+        }
+        .position-card {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: white;
+        }
+        .btn-gradient {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+        }
+        .btn-gradient:hover {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            color: white;
+        }
+        .status-active {
+            color: #28a745;
+        }
+        .status-inactive {
+            color: #dc3545;
+        }
+        .price-up {
+            color: #28a745;
+        }
+        .price-down {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg gradient-bg">
+    <div class="container">
+        <a class="navbar-brand text-white fw-bold" href="#">
+            <i class="fas fa-rocket me-2"></i>Kripto Trading Dashboard
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link text-white active" href="{{ url_for('dashboard') }}">
+                        <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-white" href="{{ url_for('portfolio') }}">
+                        <i class="fas fa-chart-pie me-1"></i>Portfolio
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-white" href="{{ url_for('settings') }}">
+                        <i class="fas fa-cog me-1"></i>Ayarlar
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- Main Content -->
+<div class="container mt-4">
+    
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'warning' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- Portfolio Summary -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card portfolio-card">
+                <div class="card-body text-center">
+                    <i class="fas fa-wallet fa-2x mb-2"></i>
+                    <h5 class="card-title">Toplam Değer</h5>
+                    <h3>${{ "{:.2f}".format(portfolio.get('current_value', 0)) }}</h3>
+                    <small>
+                        {% if portfolio.get('total_pnl_percent', 0) >= 0 %}
+                            <i class="fas fa-arrow-up"></i> +{{ "{:.2f}".format(portfolio.get('total_pnl_percent', 0)) }}%
+                        {% else %}
+                            <i class="fas fa-arrow-down"></i> {{ "{:.2f}".format(portfolio.get('total_pnl_percent', 0)) }}%
+                        {% endif %}
+                    </small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card trade-card">
+                <div class="card-body text-center">
+                    <i class="fas fa-chart-line fa-2x mb-2"></i>
+                    <h5 class="card-title">Açık Pozisyonlar</h5>
+                    <h3>{{ portfolio.get('active_positions', 0) }}</h3>
+                    <small>Aktif işlemler</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card crypto-card">
+                <div class="card-body text-center">
+                    <i class="fas fa-coins fa-2x mb-2"></i>
+                    <h5 class="card-title">İzlenen Coinler</h5>
+                    <h3>{{ coins|length }}</h3>
+                    <small>Toplam coin sayısı</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card position-card">
+                <div class="card-body text-center">
+                    <i class="fas fa-percentage fa-2x mb-2"></i>
+                    <h5 class="card-title">Başarı Oranı</h5>
+                    <h3>{{ "{:.1f}".format(portfolio.get('win_rate', 0)) }}%</h3>
+                    <small>{{ portfolio.get('successful_trades', 0) }}/{{ portfolio.get('total_trades', 0) }} işlem</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Coin Management -->
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-list me-2"></i>İzlenen Coinler</h5>
+                    <button class="btn btn-gradient btn-sm" data-bs-toggle="modal" data-bs-target="#addCoinModal">
+                        <i class="fas fa-plus me-1"></i>Coin Ekle
+                    </button>
+                </div>
+                <div class="card-body">
+                    {% if coins %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Coin</th>
+                                        <th>Güncel Fiyat</th>
+                                        <th>24h Değişim</th>
+                                        <th>Son Analiz</th>
+                                        <th>İşlemler</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for coin in coins %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ coin.symbol }}</strong>
+                                                <br><small class="text-muted">{{ coin.name or coin.symbol }}</small>
+                                            </td>
+                                            <td>
+                                                {% if coin.current_price %}
+                                                    ${{ "{:.6f}".format(coin.current_price) }}
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if coin.price_change_24h %}
+                                                    <span class="{{ 'price-up' if coin.price_change_24h > 0 else 'price-down' }}">
+                                                        {{ "{:+.2f}".format(coin.price_change_24h) }}%
+                                                    </span>
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if coin.last_analysis %}
+                                                    <small>{{ coin.last_analysis }}</small>
+                                                    <br><span class="badge bg-success">{{ coin.analysis_count }} analiz</span>
+                                                {% else %}
+                                                    <span class="text-muted">Henüz analiz yok</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <a href="{{ url_for('analyze_coin_route', symbol=coin.symbol) }}" 
+                                                   class="btn btn-sm btn-outline-primary me-1">
+                                                    <i class="fas fa-chart-bar"></i>
+                                                </a>
+                                                <a href="{{ url_for('remove_coin', symbol=coin.symbol) }}" 
+                                                   class="btn btn-sm btn-outline-danger"
+                                                   onclick="return confirm('{{ coin.symbol }} çıkarılsın mı?')">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-coins fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">Henüz izlenen coin yok. Coin ekleyerek başlayın!</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="col-md-4">
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Hızlı İşlemler</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('start_monitoring') }}" class="btn btn-success">
+                            <i class="fas fa-play me-2"></i>İzleme Başlat
+                        </a>
+                        <a href="{{ url_for('stop_monitoring') }}" class="btn btn-warning">
+                            <i class="fas fa-stop me-2"></i>İzleme Durdur
+                        </a>
+                        <button class="btn btn-info" onclick="refreshData()">
+                            <i class="fas fa-sync me-2"></i>Verileri Yenile
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Sistem Durumu</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled">
+                        <li>
+                            <i class="fas fa-circle status-active me-2"></i>
+                            <strong>API Bağlantısı:</strong> Aktif
+                        </li>
+                        <li>
+                            <i class="fas fa-circle {{ 'status-active' if monitoring_active else 'status-inactive' }} me-2"></i>
+                            <strong>Coin İzleme:</strong> {{ 'Aktif' if monitoring_active else 'Pasif' }}
+                        </li>
+                        <li>
+                            <i class="fas fa-circle status-active me-2"></i>
+                            <strong>Model Cache:</strong> {{ 'Aktif' if cache_available else 'Pasif' }}
+                        </li>
+                        <li>
+                            <i class="fas fa-circle status-active me-2"></i>
+                            <strong>Veritabanı:</strong> Aktif
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Trades & Open Positions -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Son İşlemler</h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_trades %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Coin</th>
+                                        <th>İşlem</th>
+                                        <th>Fiyat</th>
+                                        <th>Miktar</th>
+                                        <th>Tarih</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for trade in recent_trades[:5] %}
+                                        <tr>
+                                            <td><strong>{{ trade.coin_symbol }}</strong></td>
+                                            <td>
+                                                <span class="badge {{ 'bg-success' if 'BUY' in trade.trade_type or 'LONG' in trade.trade_type else 'bg-danger' }}">
+                                                    {{ trade.trade_type }}
+                                                </span>
+                                            </td>
+                                            <td>${{ "{:.6f}".format(trade.price) }}</td>
+                                            <td>{{ "{:.4f}".format(trade.quantity) }}</td>
+                                            <td><small>{{ trade.timestamp }}</small></td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center">Henüz işlem yok</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>Açık Pozisyonlar</h5>
+                </div>
+                <div class="card-body">
+                    {% if open_positions %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Coin</th>
+                                        <th>Tip</th>
+                                        <th>Giriş</th>
+                                        <th>Güncel</th>
+                                        <th>P&L</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for position in open_positions[:5] %}
+                                        <tr>
+                                            <td><strong>{{ position.coin_symbol }}</strong></td>
+                                            <td>
+                                                <span class="badge {{ 'bg-success' if position.position_type == 'LONG' else 'bg-warning' if position.position_type == 'SHORT' else 'bg-info' }}">
+                                                    {{ position.position_type }}
+                                                </span>
+                                            </td>
+                                            <td>${{ "{:.6f}".format(position.entry_price) }}</td>
+                                            <td>${{ "{:.6f}".format(position.current_price or position.entry_price) }}</td>
+                                            <td>
+                                                <span class="{{ 'price-up' if (position.unrealized_pnl or 0) >= 0 else 'price-down' }}">
+                                                    ${{ "{:.2f}".format(position.unrealized_pnl or 0) }}
+                                                    ({{ "{:+.2f}".format(position.pnl_percent or 0) }}%)
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center">Açık pozisyon yok</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Coin Modal -->
+<div class="modal fade" id="addCoinModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">🪙 Coin Ekle</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('add_coin') }}" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="symbol" class="form-label">Coin Sembolü *</label>
+                        <input type="text" class="form-control" id="symbol" name="symbol" 
+                               placeholder="BTC, ETH, BNB..." required style="text-transform: uppercase;">
+                        <div class="form-text">Büyük harflerle yazın (örn: BTC)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Coin İsmi (Opsiyonel)</label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               placeholder="Bitcoin, Ethereum...">
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="auto_analyze" name="auto_analyze" checked>
+                            <label class="form-check-label" for="auto_analyze">
+                                <strong>🧠 Otomatik LSTM Analizi</strong>
+                            </label>
+                            <div class="form-text">
+                                Coin eklendikten hemen sonra:
+                                <ul class="mb-0 mt-1">
+                                    <li>📊 100 günlük veri çekilir</li>
+                                    <li>🤖 LSTM modeli eğitilir</li>
+                                    <li>📈 Fiyat tahmini yapılır</li>
+                                    <li>📰 Haber analizi (eğer aktifse)</li>
+                                    <li>🐋 Whale analizi (eğer aktifse)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Bilgi:</strong> Otomatik analiz 2-5 dakika sürebilir. İşlem arka planda çalışacaktır.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" class="btn btn-gradient">
+                        <i class="fas fa-plus me-1"></i>Coin Ekle ve Analiz Et
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Real-time Notifications -->
+<div class="position-fixed top-0 end-0 p-3" style="z-index: 1050;">
+    <div id="analysisToast" class="toast hide" role="alert">
+        <div class="toast-header">
+            <strong class="me-auto" id="toastTitle">📊 Analiz Durumu</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body" id="toastBody">
+            <!-- Dynamic content -->
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+<script>
+    // WebSocket connection
+    const socket = io();
+    let toastInstance;
+
+    // Initialize toast
+    document.addEventListener('DOMContentLoaded', function() {
+        const toastElement = document.getElementById('analysisToast');
+        toastInstance = new bootstrap.Toast(toastElement);
+    });
+
+    // WebSocket event handlers
+    socket.on('connect', function() {
+        console.log('Dashboard bağlantısı kuruldu');
+    });
+
+    socket.on('analysis_complete', function(data) {
+        console.log('Analiz tamamlandı:', data);
+        
+        const prediction = data.result.prediction;
+        const currentPrice = prediction.current_price;
+        const predictedPrice = prediction.predicted_price;
+        const priceChange = ((predictedPrice - currentPrice) / currentPrice * 100).toFixed(2);
+        const changeColor = priceChange >= 0 ? 'success' : 'danger';
+        
+        // Show success toast
+        document.getElementById('toastTitle').innerHTML = `✅ ${data.coin} Analizi Tamamlandı`;
+        document.getElementById('toastBody').innerHTML = `
+            <div class="d-flex justify-content-between">
+                <div>
+                    <strong>Güncel Fiyat:</strong> $${currentPrice.toFixed(6)}<br>
+                    <strong>Tahmin:</strong> $${predictedPrice.toFixed(6)}<br>
+                    <strong>Beklenen Değişim:</strong> 
+                    <span class="text-${changeColor}">
+                        ${priceChange >= 0 ? '+' : ''}${priceChange}%
+                    </span><br>
+                    <strong>Güven:</strong> ${(prediction.confidence * 100).toFixed(1)}%
+                </div>
+            </div>
+        `;
+        document.getElementById('analysisToast').className = 'toast show';
+        toastInstance.show();
+        
+        // Auto refresh page after 3 seconds to show new data
+        setTimeout(() => {
+            window.location.reload();
+        }, 3000);
+    });
+
+    socket.on('analysis_error', function(data) {
+        console.error('Analiz hatası:', data);
+        
+        // Show error toast
+        document.getElementById('toastTitle').innerHTML = `❌ ${data.coin} Analiz Hatası`;
+        document.getElementById('toastBody').innerHTML = `
+            <div class="text-danger">
+                <strong>Hata:</strong> ${data.error}
+            </div>
+        `;
+        document.getElementById('analysisToast').className = 'toast show';
+        toastInstance.show();
+    });
+
+    socket.on('analysis_update', function(data) {
+        console.log('Analiz güncellendi:', data);
+        // Handle monitoring updates
+    });
+
+    function refreshData() {
+        window.location.reload();
+    }
+
+    // Form submission handler for better UX
+    document.querySelector('#addCoinModal form').addEventListener('submit', function(e) {
+        const autoAnalyze = document.getElementById('auto_analyze').checked;
+        const symbol = document.getElementById('symbol').value.toUpperCase();
+        
+        if (autoAnalyze) {
+            // Show loading toast
+            document.getElementById('toastTitle').innerHTML = `🔄 ${symbol} İşleniyor`;
+            document.getElementById('toastBody').innerHTML = `
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    <div>
+                        <strong>1/4:</strong> Veri çekiliyor...<br>
+                        <small class="text-muted">Bu işlem 2-5 dakika sürebilir</small>
+                    </div>
+                </div>
+            `;
+            document.getElementById('analysisToast').className = 'toast show';
+            toastInstance.show();
+        }
+    });
+
+    // Auto refresh every 30 seconds
+    setInterval(function() {
+        fetch('/api/portfolio')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update portfolio summary silently
+                    console.log('Portfolio güncellendi:', data.data);
+                }
+            })
+            .catch(error => console.error('Güncelleme hatası:', error));
+    }, 30000);
+
+    // Uppercase coin symbol input
+    document.getElementById('symbol').addEventListener('input', function() {
+        this.value = this.value.toUpperCase();
+    });
+</script>
+
+</body>
+</html> 

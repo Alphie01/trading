@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 {{ analysis.symbol }} - Detaylı Analiz</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card { border: none; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .prediction-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .technical-card { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
+        .news-card { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; }
+        .whale-card { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; }
+        .price-up { color: #28a745; }
+        .price-down { color: #dc3545; }
+        .confidence-bar { height: 10px; background: rgba(255,255,255,0.3); border-radius: 5px; overflow: hidden; }
+        .confidence-fill { height: 100%; background: #28a745; transition: width 0.5s ease; }
+    </style>
+</head>
+<body class="bg-light">
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg gradient-bg">
+    <div class="container">
+        <a class="navbar-brand text-white fw-bold" href="{{ url_for('dashboard') }}">
+            <i class="fas fa-arrow-left me-2"></i>{{ analysis.symbol }} Detaylı Analiz
+        </a>
+        <div class="navbar-nav ms-auto">
+            <a class="nav-link text-white" href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a class="nav-link text-white" href="{{ url_for('portfolio') }}">Portfolio</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Main Content -->
+<div class="container mt-4">
+    
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'warning' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- Header Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card prediction-card">
+                <div class="card-body text-center">
+                    <i class="fas fa-coins fa-2x mb-2"></i>
+                    <h5 class="card-title">Güncel Fiyat</h5>
+                    <h3>${{ "{:.6f}".format(analysis.current_price if analysis.current_price else 0.0) }}</h3>
+                    <small>{{ analysis.symbol }}/USDT</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card technical-card">
+                <div class="card-body text-center">
+                    <i class="fas fa-chart-line fa-2x mb-2"></i>
+                    <h5 class="card-title">LSTM Tahmini</h5>
+                    <h3>${{ "{:.6f}".format(analysis.predicted_price) }}</h3>
+                    <small>{{ analysis.prediction_timeframe }} içinde</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card news-card">
+                <div class="card-body text-center">
+                    <i class="fas fa-percentage fa-2x mb-2"></i>
+                    <h5 class="card-title">Beklenen Değişim</h5>
+                    <h3 class="{{ 'price-up' if analysis.price_change_percent >= 0 else 'price-down' }}">
+                        {{ "{:+.2f}".format(analysis.price_change_percent) }}%
+                    </h3>
+                    <small>
+                        {% if analysis.price_change_percent >= 0 %}
+                            <i class="fas fa-arrow-up"></i> Yükseliş
+                        {% else %}
+                            <i class="fas fa-arrow-down"></i> Düşüş
+                        {% endif %}
+                    </small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card whale-card">
+                <div class="card-body text-center">
+                    <i class="fas fa-shield-alt fa-2x mb-2"></i>
+                    <h5 class="card-title">Güven Seviyesi</h5>
+                    <h3>{{ "{:.1f}".format(analysis.confidence) }}%</h3>
+                    <div class="confidence-bar mt-2">
+                        <div class="confidence-fill" style="width: {{ analysis.confidence }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Risk Assessment -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Risk Değerlendirmesi</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Risk Seviyesi:</h6>
+                            <span class="badge bg-{{ 'success' if analysis.risk_level == 'LOW' else 'warning' if analysis.risk_level == 'MEDIUM' else 'danger' }} fs-6">
+                                {{ analysis.risk_level }}
+                                {% if analysis.risk_level == 'LOW' %} - Düşük Risk
+                                {% elif analysis.risk_level == 'MEDIUM' %} - Orta Risk
+                                {% else %} - Yüksek Risk {% endif %}
+                            </span>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Analiz Zamanı:</h6>
+                            <span class="text-muted">{{ analysis.analysis_timestamp }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Analysis Tabs -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" id="analysisTab">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#prediction">
+                                <i class="fas fa-robot me-1"></i>LSTM Tahmini
+                            </button>
+                        </li>
+                        {% if analysis.model_type == 'Multi_Model_Analysis' %}
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#dqn_analysis">
+                                <i class="fas fa-brain me-1"></i>DQN Analysis
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#hybrid_analysis">
+                                <i class="fas fa-network-wired me-1"></i>Hybrid Model
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#ensemble">
+                                <i class="fas fa-users me-1"></i>Ensemble
+                            </button>
+                        </li>
+                        {% endif %}
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#technical">
+                                <i class="fas fa-chart-area me-1"></i>Teknik Analiz
+                            </button>
+                        </li>
+                        {% if analysis.news_available %}
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#news">
+                                <i class="fas fa-newspaper me-1"></i>Haber Analizi
+                            </button>
+                        </li>
+                        {% endif %}
+                        {% if analysis.whale_available %}
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#whale">
+                                <i class="fas fa-water me-1"></i>Whale Analizi
+                            </button>
+                        </li>
+                        {% endif %}
+                        {% if analysis.yigit_available %}
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#yigit">
+                                <i class="fas fa-signal me-1"></i>Yigit Sinyalleri
+                            </button>
+                        </li>
+                        {% endif %}
+                        {% if analysis.trade_available %}
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#trading">
+                                <i class="fas fa-exchange-alt me-1"></i>Trading Sinyali
+                            </button>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content">
+                        
+                        <!-- LSTM Prediction Tab -->
+                        <div class="tab-pane fade show active" id="prediction">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h5><i class="fas fa-brain me-2"></i>Model Performansı</h5>
+                                    <table class="table table-sm">
+                                        <tr>
+                                            <td><strong>Güven Seviyesi:</strong></td>
+                                            <td>{{ "{:.1f}".format(analysis.confidence) }}%</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Model Tipi:</strong></td>
+                                            <td>LSTM Neural Network</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Eğitim Veri:</strong></td>
+                                            <td>100 günlük OHLCV verisi</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Özellik Sayısı:</strong></td>
+                                            <td>{{ analysis.prediction_details.get('feature_count', '20+') }}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <h5><i class="fas fa-target me-2"></i>Tahmin Detayları</h5>
+                                    <table class="table table-sm">
+                                        <tr>
+                                            <td><strong>Tahmin Periyodu:</strong></td>
+                                            <td>{{ analysis.prediction_timeframe }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Fiyat Hareketi:</strong></td>
+                                            <td>
+                                                {% if analysis.price_change_percent >= 2 %}
+                                                    <span class="badge bg-success">Güçlü Yükseliş</span>
+                                                {% elif analysis.price_change_percent >= 0.5 %}
+                                                    <span class="badge bg-info">Hafif Yükseliş</span>
+                                                {% elif analysis.price_change_percent <= -2 %}
+                                                    <span class="badge bg-danger">Güçlü Düşüş</span>
+                                                {% elif analysis.price_change_percent <= -0.5 %}
+                                                    <span class="badge bg-warning">Hafif Düşüş</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Yatay Seyir</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Potansiyel Kar:</strong></td>
+                                            <td class="{{ 'text-success' if analysis.price_change_percent >= 0 else 'text-danger' }}">
+                                                {{ "{:+.2f}".format(analysis.price_change_percent) }}%
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Technical Analysis Tab -->
+                        <div class="tab-pane fade" id="technical">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <h5><i class="fas fa-chart-line me-2"></i>Teknik İndikatörler</h5>
+                                    
+                                    {% if analysis.technical_analysis and not analysis.technical_analysis.get('error') %}
+                                    
+                                    <!-- Ana İndikatörler -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-3">
+                                            <div class="card bg-info text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>RSI (14)</h6>
+                                                    <h4>{{ "%.1f"|format(analysis.technical_analysis.rsi.value) }}</h4>
+                                                    <small>{{ analysis.technical_analysis.rsi.signal }}</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-primary text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>MACD</h6>
+                                                    <h4>{{ analysis.technical_analysis.macd.trend }}</h4>
+                                                    <small>{{ "%.4f"|format(analysis.technical_analysis.macd.value) }}</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-warning text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Bollinger Bands</h6>
+                                                    <h4>{{ analysis.technical_analysis.bollinger_bands.position }}</h4>
+                                                    <small>Fiyat Konumu</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-success text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Moving Average</h6>
+                                                    <h4>{{ analysis.technical_analysis.moving_averages.trend }}</h4>
+                                                    <small>SMA 7 vs 25</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Detaylı Analiz -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-chart-bar me-2"></i>RSI & MACD Detay</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <table class="table table-sm">
+                                                        <tr>
+                                                            <td><strong>RSI Değeri:</strong></td>
+                                                            <td>{{ "%.2f"|format(analysis.technical_analysis.rsi.value) }}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>RSI Sinyal:</strong></td>
+                                                            <td>
+                                                                {% set rsi_signal = analysis.technical_analysis.rsi.signal %}
+                                                                {% if rsi_signal == "AŞIRI SATILDI" %}
+                                                                    <span class="badge bg-success">{{ rsi_signal }}</span>
+                                                                {% elif rsi_signal == "AŞIRI ALINDI" %}
+                                                                    <span class="badge bg-danger">{{ rsi_signal }}</span>
+                                                                {% else %}
+                                                                    <span class="badge bg-secondary">{{ rsi_signal }}</span>
+                                                                {% endif %}
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>MACD Line:</strong></td>
+                                                            <td>{{ "%.6f"|format(analysis.technical_analysis.macd.value) }}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>MACD Signal:</strong></td>
+                                                            <td>{{ "%.6f"|format(analysis.technical_analysis.macd.signal_value) }}</td>
+                                                        </tr>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-layer-group me-2"></i>Moving Averages & Volume</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <table class="table table-sm">
+                                                        <tr>
+                                                            <td><strong>SMA 7:</strong></td>
+                                                            <td>${{ "%.6f"|format(analysis.technical_analysis.moving_averages.sma_7) }}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>SMA 25:</strong></td>
+                                                            <td>${{ "%.6f"|format(analysis.technical_analysis.moving_averages.sma_25) }}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>MA Trend:</strong></td>
+                                                            <td>
+                                                                {% set ma_trend = analysis.technical_analysis.moving_averages.trend %}
+                                                                {% if ma_trend == "YUKARI TREND" %}
+                                                                    <span class="badge bg-success">{{ ma_trend }}</span>
+                                                                {% else %}
+                                                                    <span class="badge bg-danger">{{ ma_trend }}</span>
+                                                                {% endif %}
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>Volume Trend:</strong></td>
+                                                            <td>
+                                                                {% set vol_trend = analysis.technical_analysis.volume.trend %}
+                                                                {% if vol_trend == "YÜKSEK" %}
+                                                                    <span class="badge bg-success">{{ vol_trend }}</span>
+                                                                {% elif vol_trend == "DÜŞÜK" %}
+                                                                    <span class="badge bg-warning">{{ vol_trend }}</span>
+                                                                {% else %}
+                                                                    <span class="badge bg-secondary">{{ vol_trend }}</span>
+                                                                {% endif %}
+                                                            </td>
+                                                        </tr>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Bollinger Bands Detay -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-12">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-compress-arrows-alt me-2"></i>Bollinger Bands Detay</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="row">
+                                                        <div class="col-md-4 text-center">
+                                                            <div class="bg-danger text-white p-3 rounded">
+                                                                <h6>Üst Band</h6>
+                                                                <h5>${{ "%.6f"|format(analysis.technical_analysis.bollinger_bands.upper) }}</h5>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-4 text-center">
+                                                            <div class="bg-primary text-white p-3 rounded">
+                                                                <h6>Mevcut Fiyat</h6>
+                                                                <h5>${{ "%.6f"|format(analysis.current_price if analysis.current_price else 0.0) }}</h5>
+                                                                <small>{{ analysis.technical_analysis.bollinger_bands.position }}</small>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-4 text-center">
+                                                            <div class="bg-success text-white p-3 rounded">
+                                                                <h6>Alt Band</h6>
+                                                                <h5>${{ "%.6f"|format(analysis.technical_analysis.bollinger_bands.lower) }}</h5>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Genel Sinyaller -->
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="card bg-light">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-signal me-2"></i>Teknik Analiz Özeti</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="alert alert-primary">
+                                                        <h6><i class="fas fa-info-circle me-2"></i>Tespit Edilen Sinyaller:</h6>
+                                                        <ul class="mb-0">
+                                                            {% for signal in analysis.technical_analysis.overall_signals %}
+                                                            <li>{{ signal }}</li>
+                                                            {% endfor %}
+                                                        </ul>
+                                                    </div>
+                                                    <p class="mb-0">
+                                                        <strong>{{ analysis.technical_analysis.summary }}</strong>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {% else %}
+                                    
+                                    <!-- Teknik Analiz Hatası -->
+                                    <div class="alert alert-warning">
+                                        <h6><i class="fas fa-exclamation-triangle me-2"></i>Teknik Analiz Hatası</h6>
+                                        <p class="mb-0">{{ analysis.technical_analysis.get('summary', 'Teknik indikatörler hesaplanamadı.') }}</p>
+                                    </div>
+                                    
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- News Analysis Tab -->
+                        {% if analysis.news_available %}
+                        <div class="tab-pane fade" id="news">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h5><i class="fas fa-newspaper me-2"></i>Haber Sentiment Analizi</h5>
+                                    <div class="card news-card">
+                                        <div class="card-body text-center">
+                                            <h6>Genel Sentiment</h6>
+                                            <h3>
+                                                {% set sentiment = analysis.news_analysis.get('news_sentiment', 0) %}
+                                                {% if sentiment > 0.1 %}
+                                                    <i class="fas fa-smile text-white"></i> Pozitif
+                                                {% elif sentiment < -0.1 %}
+                                                    <i class="fas fa-frown text-white"></i> Negatif
+                                                {% else %}
+                                                    <i class="fas fa-meh text-white"></i> Nötr
+                                                {% endif %}
+                                            </h3>
+                                            <small>{{ analysis.news_analysis.get('news_count', 0) }} haber analiz edildi</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Whale Analysis Tab -->
+                        {% if analysis.whale_available %}
+                        <div class="tab-pane fade" id="whale">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h5><i class="fas fa-water me-2"></i>Whale Aktivitesi</h5>
+                                    <div class="card whale-card">
+                                        <div class="card-body text-center">
+                                            <h6>Aktivite Skoru</h6>
+                                            <h3>{{ analysis.whale_analysis.get('whale_activity_score', 0) }}/100</h3>
+                                            <small>Son 24 saat</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Yigit Signals Tab -->
+                        {% if analysis.yigit_available %}
+                        <div class="tab-pane fade" id="yigit">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <h5><i class="fas fa-signal me-2"></i>Yigit ATR Trailing Stop Sinyalleri</h5>
+                                    
+                                    {% if analysis.yigit_analysis.get('has_yigit', False) %}
+                                    
+                                    <!-- Ana Sinyal Kartları -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-3">
+                                            <div class="card bg-primary text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Mevcut Sinyal</h6>
+                                                    <h4>{{ analysis.yigit_analysis.get('current_signal', 'SİNYAL YOK') }}</h4>
+                                                    <small>ATR Trailing Stop</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-success text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Trend Yönü</h6>
+                                                    <h4>{{ analysis.yigit_analysis.get('direction', 'NÖTR') }}</h4>
+                                                    <small>Trend Analizi</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-warning text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Trend Gücü</h6>
+                                                    <h4>{{ "%.2f"|format(analysis.yigit_analysis.get('trend_strength', 0)) }}</h4>
+                                                    <small>Güç Seviyesi</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-info text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Güvenilirlik</h6>
+                                                    <h4>{{ "%.0f"|format(analysis.yigit_analysis.get('confidence', 0)) }}%</h4>
+                                                    <small>Sinyal Güveni</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Detaylı Analiz -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-chart-bar me-2"></i>Son 10 Dönem Sinyaller</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="row">
+                                                        <div class="col-6 text-center">
+                                                            <div class="bg-success text-white p-3 rounded">
+                                                                <h5>{{ analysis.yigit_analysis.get('recent_buy_signals', 0) }}</h5>
+                                                                <small>Al Sinyali</small>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-6 text-center">
+                                                            <div class="bg-danger text-white p-3 rounded">
+                                                                <h5>{{ analysis.yigit_analysis.get('recent_sell_signals', 0) }}</h5>
+                                                                <small>Sat Sinyali</small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-cog me-2"></i>Teknik Detaylar</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <table class="table table-sm">
+                                                        <tr>
+                                                            <td><strong>Mevcut Pozisyon:</strong></td>
+                                                            <td>
+                                                                {% set pos = analysis.yigit_analysis.get('current_position', 0) %}
+                                                                {% if pos == 1 %}
+                                                                    <span class="badge bg-success">LONG (+1)</span>
+                                                                {% elif pos == -1 %}
+                                                                    <span class="badge bg-danger">SHORT (-1)</span>
+                                                                {% else %}
+                                                                    <span class="badge bg-secondary">NÖTR (0)</span>
+                                                                {% endif %}
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>Pozisyon Stabilite:</strong></td>
+                                                            <td>{{ "%.1f"|format(analysis.yigit_analysis.get('position_stability', 0)) }}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><strong>Volume/Price Ratio:</strong></td>
+                                                            <td>{{ "%.6f"|format(analysis.yigit_analysis.get('volume_price_ratio', 0)) }}</td>
+                                                        </tr>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Strateji Önerisi -->
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="card bg-light">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-lightbulb me-2"></i>Yigit Strateji Önerisi</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="alert alert-primary">
+                                                        <h5><i class="fas fa-bullseye me-2"></i>{{ analysis.yigit_analysis.get('strategy_recommendation', 'BEKLE VE İZLE') }}</h5>
+                                                        <p class="mb-0">
+                                                            Yigit ATR Trailing Stop analizi sonucunda önerilen strateji.
+                                                            Trend gücü ve sinyal güvenilirliği dikkate alınarak oluşturulmuştur.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {% else %}
+                                    
+                                    <!-- Yigit Verisi Yok -->
+                                    <div class="alert alert-warning">
+                                        <h6><i class="fas fa-exclamation-triangle me-2"></i>Yigit ATR Trailing Stop Verisi Bulunamadı</h6>
+                                        <p class="mb-0">{{ analysis.yigit_analysis.get('analysis', 'Yigit indikatörleri hesaplanamadı veya veri yetersiz.') }}</p>
+                                    </div>
+                                    
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Trading Signal Tab -->
+                        {% if analysis.trade_available %}
+                        <div class="tab-pane fade" id="trading">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h5><i class="fas fa-exchange-alt me-2"></i>Otomatik Trading Sinyali</h5>
+                                    <div class="card" style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);">
+                                        <div class="card-body">
+                                            <h6>Öneri:</h6>
+                                            <h3>
+                                                {% set action = analysis.trade_signal.get('action', 'HOLD') %}
+                                                {% if action == 'LONG' %}
+                                                    <span class="badge bg-success fs-5">
+                                                        <i class="fas fa-arrow-up me-1"></i>LONG
+                                                    </span>
+                                                {% elif action == 'SHORT' %}
+                                                    <span class="badge bg-danger fs-5">
+                                                        <i class="fas fa-arrow-down me-1"></i>SHORT
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary fs-5">
+                                                        <i class="fas fa-pause me-1"></i>HOLD
+                                                    </span>
+                                                {% endif %}
+                                            </h3>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- DQN Analysis Tab -->
+                        {% if analysis.model_type == 'Multi_Model_Analysis' %}
+                        <div class="tab-pane fade" id="dqn_analysis">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <h5><i class="fas fa-brain me-2"></i>Deep Q-Learning Analysis</h5>
+                                    
+                                    {% if analysis.dqn_analysis.get('success', False) %}
+                                    
+                                    <!-- DQN Results -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-4">
+                                            <div class="card bg-info text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Önerilen Aksiyon</h6>
+                                                    <h4>{{ analysis.dqn_analysis.prediction.get('action_name', 'N/A') }}</h4>
+                                                    <small>DQN Trading Aksiyonu</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="card bg-success text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Güven Seviyesi</h6>
+                                                    <h4>{{ "%.1f"|format(analysis.dqn_analysis.get('confidence', 0) * 100) }}%</h4>
+                                                    <small>DQN Güvenilirlik</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="card bg-warning text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Model Durumu</h6>
+                                                    <h4>{{ analysis.dqn_analysis.get('model_type', 'DQN') }}</h4>
+                                                    <small>Eğitim Durumu</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- DQN Reasoning -->
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-lightbulb me-2"></i>DQN Karar Süreci</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="alert alert-info">
+                                                        <pre>{{ analysis.dqn_analysis.prediction.get('reasoning', 'DQN analizi mevcut değil') }}</pre>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {% else %}
+                                    
+                                    <!-- DQN Error -->
+                                    <div class="alert alert-warning">
+                                        <h6><i class="fas fa-exclamation-triangle me-2"></i>DQN Model Hatası</h6>
+                                        <p class="mb-0">{{ analysis.dqn_analysis.get('error', 'DQN modeli yüklenemedi') }}</p>
+                                    </div>
+                                    
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Hybrid Analysis Tab -->
+                        <div class="tab-pane fade" id="hybrid_analysis">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <h5><i class="fas fa-network-wired me-2"></i>Hybrid LSTM+DQN Analysis</h5>
+                                    
+                                    {% if analysis.hybrid_analysis.get('success', False) %}
+                                    
+                                    <!-- Hybrid Results -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-3">
+                                            <div class="card bg-primary text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>LSTM Contribution</h6>
+                                                    <h4>{{ "%.1f"|format((analysis.hybrid_analysis.prediction.ensemble_prediction.component_signals.lstm * 100) if analysis.hybrid_analysis.prediction.get('ensemble_prediction') else 0) }}%</h4>
+                                                    <small>LSTM Etkisi</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-info text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>DQN Contribution</h6>
+                                                    <h4>{{ "%.1f"|format((analysis.hybrid_analysis.prediction.ensemble_prediction.component_signals.dqn * 100) if analysis.hybrid_analysis.prediction.get('ensemble_prediction') else 0) }}%</h4>
+                                                    <small>DQN Etkisi</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-success text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Technical</h6>
+                                                    <h4>{{ "%.1f"|format((analysis.hybrid_analysis.prediction.ensemble_prediction.component_signals.technical * 100) if analysis.hybrid_analysis.prediction.get('ensemble_prediction') else 0) }}%</h4>
+                                                    <small>Teknik Analiz</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-warning text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Final Signal</h6>
+                                                    <h4>{{ analysis.hybrid_analysis.prediction.ensemble_prediction.get('recommendation', 'N/A') if analysis.hybrid_analysis.prediction.get('ensemble_prediction') else 'N/A' }}</h4>
+                                                    <small>Hibrit Önerisi</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Hybrid Reasoning -->
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-cogs me-2"></i>Hibrit Model Analizi</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="alert alert-primary">
+                                                        <pre>{{ analysis.hybrid_analysis.prediction.ensemble_prediction.get('reasoning', 'Hibrit analizi mevcut değil') if analysis.hybrid_analysis.prediction.get('ensemble_prediction') else 'Hibrit analizi mevcut değil' }}</pre>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {% else %}
+                                    
+                                    <!-- Hybrid Error -->
+                                    <div class="alert alert-warning">
+                                        <h6><i class="fas fa-exclamation-triangle me-2"></i>Hibrit Model Hatası</h6>
+                                        <p class="mb-0">{{ analysis.hybrid_analysis.get('error', 'Hibrit modeli yüklenemedi') }}</p>
+                                    </div>
+                                    
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Ensemble Analysis Tab -->
+                        <div class="tab-pane fade" id="ensemble">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <h5><i class="fas fa-users me-2"></i>Ensemble Model Karşılaştırması</h5>
+                                    
+                                    {% if analysis.ensemble_recommendation.get('success', False) %}
+                                    
+                                    <!-- Model Agreement -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-3">
+                                            <div class="card bg-success text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Final Recommendation</h6>
+                                                    <h4>{{ analysis.ensemble_recommendation.get('recommendation', 'HOLD') }}</h4>
+                                                    <small>Ensemble Önerisi</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-info text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Confidence</h6>
+                                                    <h4>{{ "%.0f"|format(analysis.ensemble_recommendation.get('confidence', 0) * 100) }}%</h4>
+                                                    <small>Ensemble Güveni</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-warning text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Models Used</h6>
+                                                    <h4>{{ analysis.ensemble_recommendation.get('model_count', 0) }}/3</h4>
+                                                    <small>Aktif Model</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="card bg-danger text-white">
+                                                <div class="card-body text-center">
+                                                    <h6>Agreement</h6>
+                                                    <h4>{{ "%.0f"|format((analysis.model_comparison.get('agreement_score', 0) if analysis.model_comparison else 0) * 100) }}%</h4>
+                                                    <small>Model Uyumu</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Model Comparison Table -->
+                                    <div class="row mb-4">
+                                        <div class="col-12">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-table me-2"></i>Model Karşılaştırması</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <table class="table table-striped">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Model</th>
+                                                                <th>Durum</th>
+                                                                <th>Güvenilirlik</th>
+                                                                <th>Sinyal</th>
+                                                                <th>Yönelim</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr>
+                                                                <td><strong>LSTM</strong></td>
+                                                                <td>
+                                                                    {% if analysis.lstm_analysis.get('success', False) %}
+                                                                        <span class="badge bg-success">✅ Aktif</span>
+                                                                    {% else %}
+                                                                        <span class="badge bg-danger">❌ Hata</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td>{{ "%.0f"|format(analysis.lstm_analysis.get('confidence', 0)) }}%</td>
+                                                                <td>{{ "%.2f"|format(analysis.lstm_analysis.prediction.get('price_change_percent', 0)) if analysis.lstm_analysis.get('prediction') else 'N/A' }}%</td>
+                                                                <td>
+                                                                    {% set change = analysis.lstm_analysis.prediction.get('price_change_percent', 0) if analysis.lstm_analysis.get('prediction') else 0 %}
+                                                                    {% if change > 1 %}
+                                                                        <span class="text-success">↗️ Yükseliş</span>
+                                                                    {% elif change < -1 %}
+                                                                        <span class="text-danger">↘️ Düşüş</span>
+                                                                    {% else %}
+                                                                        <span class="text-secondary">→ Nötr</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td><strong>DQN</strong></td>
+                                                                <td>
+                                                                    {% if analysis.dqn_analysis.get('success', False) %}
+                                                                        <span class="badge bg-success">✅ Aktif</span>
+                                                                    {% else %}
+                                                                        <span class="badge bg-danger">❌ Hata</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td>{{ "%.0f"|format(analysis.dqn_analysis.get('confidence', 0) * 100) }}%</td>
+                                                                <td>{{ analysis.dqn_analysis.prediction.get('action_name', 'N/A') if analysis.dqn_analysis.get('prediction') else 'N/A' }}</td>
+                                                                <td>
+                                                                    {% set action = analysis.dqn_analysis.prediction.get('action', 0) if analysis.dqn_analysis.get('prediction') else 0 %}
+                                                                    {% if action in [1, 2, 3, 4] %}
+                                                                        <span class="text-success">↗️ Alım</span>
+                                                                    {% elif action in [5, 6, 7, 8] %}
+                                                                        <span class="text-danger">↘️ Satım</span>
+                                                                    {% else %}
+                                                                        <span class="text-secondary">→ Bekle</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td><strong>Hybrid</strong></td>
+                                                                <td>
+                                                                    {% if analysis.hybrid_analysis.get('success', False) %}
+                                                                        <span class="badge bg-success">✅ Aktif</span>
+                                                                    {% else %}
+                                                                        <span class="badge bg-danger">❌ Hata</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td>{{ "%.0f"|format(analysis.hybrid_analysis.get('confidence', 0) * 100) }}%</td>
+                                                                <td>{{ analysis.hybrid_analysis.prediction.ensemble_prediction.get('recommendation', 'N/A') if analysis.hybrid_analysis.prediction.get('ensemble_prediction') else 'N/A' }}</td>
+                                                                <td>
+                                                                    {% set rec = analysis.hybrid_analysis.prediction.ensemble_prediction.get('recommendation', 'HOLD') if analysis.hybrid_analysis.prediction.get('ensemble_prediction') else 'HOLD' %}
+                                                                    {% if 'BUY' in rec %}
+                                                                        <span class="text-success">↗️ Alım</span>
+                                                                    {% elif 'SELL' in rec %}
+                                                                        <span class="text-danger">↘️ Satım</span>
+                                                                    {% else %}
+                                                                        <span class="text-secondary">→ Bekle</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Ensemble Reasoning -->
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="card bg-light">
+                                                <div class="card-header">
+                                                    <h6><i class="fas fa-comments me-2"></i>Ensemble Karar Süreci</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="alert alert-success">
+                                                        <pre>{{ analysis.ensemble_recommendation.get('reasoning', 'Ensemble analizi mevcut değil') }}</pre>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {% else %}
+                                    
+                                    <!-- Ensemble Error -->
+                                    <div class="alert alert-warning">
+                                        <h6><i class="fas fa-exclamation-triangle me-2"></i>Ensemble Analizi Hatası</h6>
+                                        <p class="mb-0">{{ analysis.ensemble_recommendation.get('error', 'Ensemble analizi oluşturulamadı') }}</p>
+                                    </div>
+                                    
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="row mt-4 mb-4">
+        <div class="col-12 text-center">
+            <a href="{{ url_for('analyze_coin_route', symbol=analysis.symbol) }}" class="btn btn-primary btn-lg me-2">
+                <i class="fas fa-sync me-1"></i>Analizi Yenile
+            </a>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary btn-lg me-2">
+                <i class="fas fa-arrow-left me-1"></i>Dashboard'a Dön
+            </a>
+            {% if analysis.trade_available %}
+            <button class="btn btn-success btn-lg" onclick="alert('Trading sinyali uygulanacak!')">
+                <i class="fas fa-bolt me-1"></i>Trading Sinyalini Uygula
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Auto refresh every 5 minutes
+    setTimeout(function() {
+        window.location.reload();
+    }, 300000);
+
+    // Confidence bar animation
+    document.addEventListener('DOMContentLoaded', function() {
+        const confidenceFill = document.querySelector('.confidence-fill');
+        if (confidenceFill) {
+            setTimeout(() => {
+                confidenceFill.style.width = '{{ analysis.confidence }}%';
+            }, 500);
+        }
+    });
+</script>
+
+</body>
+</html>
