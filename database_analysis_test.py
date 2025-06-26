@@ -234,6 +234,53 @@ def test_database_queries():
         print(f"❌ Database query error: {e}")
         return False
 
+def test_news_analysis_integration(coin_symbol="BTCUSDT"):
+    """Test news analysis integration with database"""
+    print("\n📰 Testing News Analysis Integration...")
+    
+    try:
+        from news_analyzer import CryptoNewsAnalyzer
+        
+        # Initialize news analyzer
+        news_analyzer = CryptoNewsAnalyzer()
+        print("✅ News analyzer initialized")
+        
+        # Fetch news for testing
+        print("🔍 Fetching test news...")
+        news_list = news_analyzer.fetch_all_news(coin_symbol, days=3)
+        
+        if news_list:
+            print(f"📰 Fetched {len(news_list)} news items")
+            
+            # Analyze sentiment
+            sentiment_df = news_analyzer.analyze_news_sentiment_batch(news_list)
+            
+            if not sentiment_df.empty:
+                # Prepare news analysis for database
+                news_analysis = {
+                    'news_sentiment': sentiment_df['overall_sentiment'].mean(),
+                    'news_count': len(news_list),
+                    'avg_sentiment': sentiment_df['overall_sentiment'].mean(),
+                    'sentiment_confidence': sentiment_df['confidence'].mean()
+                }
+                
+                print(f"📊 News Analysis Results:")
+                print(f"   📰 Total news: {news_analysis['news_count']}")
+                print(f"   😊 Avg sentiment: {news_analysis['avg_sentiment']:+.3f}")
+                print(f"   🎯 Confidence: {news_analysis['sentiment_confidence']:.1%}")
+                
+                return news_analysis
+            else:
+                print("⚠️ Sentiment analysis failed")
+                return None
+        else:
+            print("⚠️ No news could be fetched")
+            return None
+            
+    except Exception as e:
+        print(f"❌ News analysis error: {e}")
+        return None
+
 def main():
     """Main test function"""
     print("🧪 Database Analysis Integration Test")
@@ -265,6 +312,9 @@ def main():
     # Test Ensemble analysis
     ensemble_result = test_ensemble_analysis(coin_symbol)
     
+    # Test news analysis integration
+    news_result = test_news_analysis_integration(coin_symbol)
+    
     # Test database queries
     query_success = test_database_queries()
     
@@ -274,9 +324,10 @@ def main():
     print(f"✅ DQN Analysis: {'Success' if dqn_result else 'Failed'}")
     print(f"✅ Hybrid Analysis: {'Success' if hybrid_result else 'Failed'}")
     print(f"✅ Ensemble Analysis: {'Success' if ensemble_result else 'Failed'}")
+    print(f"✅ News Analysis: {'Success' if news_result else 'Failed'}")
     print(f"✅ Database Queries: {'Success' if query_success else 'Failed'}")
     
-    if dqn_result or hybrid_result or ensemble_result:
+    if dqn_result or hybrid_result or ensemble_result or news_result:
         print("\n🎉 Database integration test completed successfully!")
         print("📊 Check your database for the new analysis results.")
     else:

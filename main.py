@@ -225,33 +225,67 @@ def main():
         # 2. Haber analizi (eğer isteniyorsa)
         sentiment_df = None
         news_analyzer = None
+        news_analysis = None
         
         if model_params['use_news_analysis']:
             print("\n" + "="*60)
             print("                2. HABER ANALİZİ")
             print("="*60)
             
-            news_analyzer = CryptoNewsAnalyzer(model_params['newsapi_key'])
-            
-            # Haberleri çek
-            all_news = news_analyzer.fetch_all_news(coin_symbol)  # Environment'tan alacak
-            
-            if all_news:
-                # Sentiment analizi
-                news_sentiment_df = news_analyzer.analyze_news_sentiment_batch(all_news)
+            try:
+                news_analyzer = CryptoNewsAnalyzer(model_params['newsapi_key'])
+                print("✅ News analyzer başlatıldı")
                 
-                if not news_sentiment_df.empty:
-                    # Günlük sentiment özelliklerini oluştur
-                    sentiment_df = news_analyzer.create_daily_sentiment_features(news_sentiment_df, df)
+                # Haberleri çek (detaylı debug ile)
+                print("\n📡 Haber kaynakları taranıyor...")
+                all_news = news_analyzer.fetch_all_news(coin_symbol, days=7)
+                
+                if all_news:
+                    print(f"\n🧠 {len(all_news)} haberin sentiment analizi yapılıyor...")
                     
-                    # Haber-fiyat korelasyonunu hesapla
-                    correlation_results = news_analyzer.calculate_news_price_correlation(sentiment_df, df)
+                    # Sentiment analizi
+                    news_sentiment_df = news_analyzer.analyze_news_sentiment_batch(all_news)
                     
-                    print(f"✅ Haber analizi tamamlandı! Korelasyon: {correlation_results['correlation']:.3f}")
+                    if not news_sentiment_df.empty:
+                        print("✅ News sentiment analizi tamamlandı")
+                        
+                        # Günlük sentiment özelliklerini oluştur
+                        sentiment_df = news_analyzer.create_daily_sentiment_features(news_sentiment_df, df)
+                        
+                        # Haber-fiyat korelasyonunu hesapla
+                        correlation_results = news_analyzer.calculate_news_price_correlation(sentiment_df, df)
+                        
+                        # News analysis sonuçlarını hazırla (database için)
+                        news_analysis = {
+                            'news_sentiment': correlation_results.get('correlation', 0),
+                            'news_count': len(all_news),
+                            'avg_sentiment': news_sentiment_df['overall_sentiment'].mean() if not news_sentiment_df.empty else 0,
+                            'sentiment_confidence': news_sentiment_df['confidence'].mean() if not news_sentiment_df.empty else 0
+                        }
+                        
+                        print(f"📊 Haber Analizi Özeti:")
+                        print(f"   📰 Analiz edilen haber: {news_analysis['news_count']}")
+                        print(f"   😊 Ortalama sentiment: {news_analysis['avg_sentiment']:+.3f}")
+                        print(f"   🎯 Sentiment güveni: {news_analysis['sentiment_confidence']:.1%}")
+                        print(f"   📈 Haber-fiyat korelasyonu: {news_analysis['news_sentiment']:+.3f}")
+                        
+                    else:
+                        print("❌ Haber sentiment analizi başarısız")
+                        print("💡 Çekilen haberler analiz edilemedi")
                 else:
-                    print("⚠️ Haber sentiment analizi başarısız, sadece fiyat verileri kullanılacak")
-            else:
-                print("⚠️ Haber verisi çekilemedi, sadece fiyat verileri kullanılacak")
+                    print("❌ Hiçbir kaynaktan haber çekilemedi")
+                    print("💡 Olası nedenler:")
+                    print("   • İnternet bağlantı problemi")
+                    print("   • API anahtarları eksik/geçersiz")
+                    print("   • Kaynak web siteleri erişilemez")
+                    print("   • Coin sembolü için haber bulunamadı")
+                    
+            except Exception as news_error:
+                print(f"❌ Haber analizi hatası: {str(news_error)}")
+                print("⚠️ Haber analizi atlanıyor, sadece fiyat verileri kullanılacak")
+                news_analysis = None
+        else:
+            print("\n⏭️ Haber analizi kullanıcı tarafından devre dışı bırakıldı")
         
         # 2.5 Whale analizi (eğer isteniyorsa)
         whale_features = None
@@ -411,8 +445,7 @@ def main():
         multiple_predictions = predictor.predict_multiple_periods(processed_df, periods=6)
         
         # Haber tabanlı analiz (eğer haber analizi aktifse)
-        news_analysis = None
-        if news_analyzer:
+        if news_analysis:
             print("📰 Son günlerin haber analizi yapılıyor...")
             news_analysis = predictor.analyze_recent_news_impact(coin_symbol, days=7)
         

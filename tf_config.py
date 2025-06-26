@@ -212,67 +212,100 @@ def is_tensorflow_available():
         return False
 
 def get_tensorflow():
-    """Get TensorFlow with ultra-conservative safety configuration"""
+    """Get TensorFlow with intelligent GPU/CPU selection"""
     try:
         import tensorflow as tf
         
-        print("🔧 Configuring TensorFlow for MAXIMUM M1/M2 Mac safety...")
+        print("🔧 Configuring TensorFlow with intelligent device selection...")
         
-        # **CRITICAL: FORCE CPU-ONLY MODE for stability**
+        # **STEP 1: Check GPU availability first**
+        gpu_available = False
         try:
-            # Completely disable GPU access to prevent Metal crashes
-            tf.config.set_visible_devices([], 'GPU')
-            print("✅ GPU access DISABLED - CPU-only mode enforced")
-        except Exception as gpu_disable_error:
-            print(f"⚠️ GPU disable warning: {gpu_disable_error}")
+            gpus = tf.config.list_physical_devices('GPU')
+            if gpus and len(gpus) > 0:
+                gpu_available = True
+                print(f"🎮 {len(gpus)} GPU(s) detected: {[gpu.name for gpu in gpus]}")
+                
+                # **STEP 2: Try to configure GPU safely**
+                try:
+                    # Enable memory growth for all GPUs
+                    for gpu in gpus:
+                        tf.config.experimental.set_memory_growth(gpu, True)
+                    print("✅ GPU memory growth enabled")
+                    
+                    # **Test GPU functionality**
+                    with tf.device('/GPU:0'):
+                        test_tensor = tf.constant([1., 2., 3.])
+                        test_result = tf.reduce_sum(test_tensor).numpy()
+                        print(f"✅ GPU test successful: {test_result}")
+                        print("🎮 GPU mode activated!")
+                        
+                    return tf  # Return with GPU enabled
+                    
+                except Exception as gpu_error:
+                    print(f"⚠️ GPU configuration failed: {gpu_error}")
+                    print("🔄 Falling back to CPU mode...")
+                    gpu_available = False
+            else:
+                print("🖥️ No GPUs detected")
+                
+        except Exception as gpu_check_error:
+            print(f"⚠️ GPU detection error: {gpu_check_error}")
+            print("🔄 Falling back to CPU mode...")
         
-        # **AGGRESSIVE: Set very conservative threading**
-        try:
-            tf.config.threading.set_inter_op_parallelism_threads(1)
-            tf.config.threading.set_intra_op_parallelism_threads(1)  # Single thread only
-            print("✅ Ultra-conservative single-threading enabled")
-        except Exception as threading_error:
-            print(f"⚠️ Threading config warning: {threading_error}")
-        
-        # **FORCE all operations to CPU**
-        try:
-            # Set default device to CPU
-            tf.config.experimental.set_device_policy('silent_for_int32')
-            print("✅ CPU-only device policy set")
-        except Exception as device_error:
-            print(f"⚠️ Device policy warning: {device_error}")
-        
-        # **Disable ALL GPU/Metal optimizations**
-        try:
-            # Disable experimental features that might use Metal
-            if hasattr(tf.config, 'experimental'):
-                if hasattr(tf.config.experimental, 'enable_mlir_bridge'):
-                    tf.config.experimental.enable_mlir_bridge(False)
-                    print("✅ MLIR bridge disabled")
-                if hasattr(tf.config.experimental, 'enable_mlir_graph_optimization'):
-                    tf.config.experimental.enable_mlir_graph_optimization(False)
-                    print("✅ MLIR graph optimization disabled")
-        except Exception as mlir_error:
-            print(f"⚠️ MLIR disable warning: {mlir_error}")
-        
-        # **Test TensorFlow functionality with STRICT CPU enforcement**
-        try:
-            with tf.device('/CPU:0'):
-                test_result = tf.constant([1., 2., 3.])
-                test_computation = tf.reduce_sum(test_result)
-                final_result = test_computation.numpy()
-                print(f"✅ TensorFlow CPU-only test successful: {final_result}")
-        except Exception as test_error:
-            print(f"⚠️ TensorFlow test failed: {test_error}")
-            print("🔄 Attempting basic TensorFlow without device specification...")
+        # **STEP 3: Configure for CPU mode (if no GPU or GPU failed)**
+        if not gpu_available:
+            print("🖥️ Configuring TensorFlow for CPU-only mode...")
+            
             try:
-                test_basic = tf.constant([1., 2., 3.])
-                print(f"✅ Basic TensorFlow test successful: {test_basic.numpy()}")
-            except Exception as basic_error:
-                print(f"❌ Even basic TensorFlow failed: {basic_error}")
-                # Still return TF object for compatibility
+                # Disable GPU access
+                tf.config.set_visible_devices([], 'GPU')
+                print("✅ GPU access disabled - CPU-only mode")
+            except Exception as gpu_disable_error:
+                print(f"⚠️ GPU disable warning: {gpu_disable_error}")
+            
+            # **Conservative threading for CPU**
+            try:
+                tf.config.threading.set_inter_op_parallelism_threads(2)
+                tf.config.threading.set_intra_op_parallelism_threads(4)
+                print("✅ CPU threading optimized")
+            except Exception as threading_error:
+                print(f"⚠️ Threading config warning: {threading_error}")
         
-        print("✅ TensorFlow ULTRA-SAFE configuration complete (CPU-ONLY)")
+        # **STEP 4: Set general TensorFlow optimizations**
+        try:
+            # Enable mixed precision for better performance (if supported)
+            if gpu_available:
+                try:
+                    tf.keras.mixed_precision.set_global_policy('mixed_float16')
+                    print("✅ Mixed precision enabled (GPU)")
+                except:
+                    print("⚠️ Mixed precision not supported")
+            
+            # Set device policy
+            tf.config.experimental.set_device_policy('silent_for_int32')
+            print("✅ Device policy configured")
+            
+        except Exception as config_error:
+            print(f"⚠️ General config warning: {config_error}")
+        
+        # **STEP 5: Final functionality test**
+        try:
+            test_tensor = tf.constant([1., 2., 3.])
+            test_computation = tf.reduce_sum(test_tensor)
+            final_result = test_computation.numpy()
+            
+            # Determine which device was actually used
+            device_name = test_tensor.device
+            if 'GPU' in device_name:
+                print(f"🎮 TensorFlow configured successfully with GPU: {final_result}")
+            else:
+                print(f"🖥️ TensorFlow configured successfully with CPU: {final_result}")
+                
+        except Exception as test_error:
+            print(f"⚠️ TensorFlow test warning: {test_error}")
+        
+        print("✅ TensorFlow intelligent configuration complete")
         return tf
         
     except ImportError as e:
@@ -280,15 +313,10 @@ def get_tensorflow():
         return None
     except Exception as e:
         print(f"❌ TensorFlow configuration error: {e}")
-        # **CRITICAL: Try to return basic TensorFlow if available**
+        # **Fallback: Return basic TensorFlow**
         try:
             import tensorflow as tf
-            print("🔄 Returning basic TensorFlow without advanced config")
-            # Force CPU mode even for basic TF
-            try:
-                tf.config.set_visible_devices([], 'GPU')
-            except:
-                pass
+            print("🔄 Using basic TensorFlow configuration")
             return tf
         except:
             return None
