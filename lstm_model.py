@@ -152,15 +152,15 @@ class CryptoLSTMModel:
         # Prepare callbacks
         callbacks = []
         
-        if use_early_stopping:
-            early_stopping = EarlyStopping(
+        """ if use_early_stopping:
+             """
+        early_stopping = EarlyStopping(
                 monitor='val_loss',
                 patience=10,
                 restore_best_weights=True,
                 verbose=1 if verbose else 0
-            )
-            callbacks.append(early_stopping)
-        
+        )
+        callbacks.append(early_stopping)
         # Learning rate scheduler
         lr_scheduler = ReduceLROnPlateau(
             monitor='val_loss',

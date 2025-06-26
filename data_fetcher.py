@@ -27,56 +27,92 @@ class CryptoDataFetcher:
     
     def fetch_ohlcv_data(self, symbol, timeframe='4h', days=None):
         """
-        Belirtilen coin için OHLCV verilerini çeker
+        Belirtilen coin için OHLCV verilerini çeker (çoklu isteklerle).
         
         Args:
             symbol (str): Coin çifti (örn: 'BTC/USDT')
-            timeframe (str): Zaman aralığı (varsayılan: '4h')
-            days (int): Kaç günlük veri çekileceği (None ise environment'tan alır)
-        
+            timeframe (str): Zaman aralığı (örn: '4h')
+            days (int): Kaç günlük veri çekileceği (varsayılan: env'den alınır)
+
         Returns:
-            pd.DataFrame: OHLCV verileri içeren DataFrame
+            pd.DataFrame: OHLCV verileri
         """
-        # Days parametresi verilmemişse environment'tan al
+        import pandas as pd
+        import time
+        import os
+
         if days is None:
-            days = int(os.getenv('LSTM_TRAINING_DAYS', 100))  # Varsayılan: 100 gün
-        try:
-            # Symbol'ü doğru formata çevir
-            if '/' not in symbol:
-                symbol = f"{symbol.upper()}/USDT"
-            
-            # Başlangıç tarihini hesapla
-            since = self.exchange.milliseconds() - days * 24 * 60 * 60 * 1000
-            
-            print(f"{symbol} için {days} günlük {timeframe} verileri çekiliyor...")
-            
-            # Verileri çek
-            ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since)
-            
-            if not ohlcv:
-                raise ValueError(f"{symbol} için veri bulunamadı")
-            
-            # DataFrame'e çevir
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            
-            # Timestamp'i datetime'a çevir
-            df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df.set_index('datetime', inplace=True)
-            df.drop('timestamp', axis=1, inplace=True)
-            
-            # Veri tiplerini float'a çevir
-            for col in ['open', 'high', 'low', 'close', 'volume']:
-                df[col] = df[col].astype(float)
-            
-            print(f"Başarıyla {len(df)} adet veri çekildi")
-            print(f"Tarih aralığı: {df.index[0]} - {df.index[-1]}")
-            
-            return df
-            
-        except Exception as e:
-            print(f"Veri çekme hatası: {str(e)}")
-            return None
-    
+            days = int(os.getenv('LSTM_TRAINING_DAYS', 1000))  # Varsayılan 1000 gün
+
+        if '/' not in symbol:
+            symbol = f"{symbol.upper()}/USDT"
+
+        print(f"{symbol} için {days} günlük {timeframe} verileri çekiliyor...")
+
+        # Her zaman aralığı için kaç ms olduğunu al
+        timeframe_to_ms = {
+            '1m': 60_000,
+            '5m': 5 * 60_000,
+            '15m': 15 * 60_000,
+            '30m': 30 * 60_000,
+            '1h': 60 * 60_000,
+            '2h': 2 * 60 * 60_000,
+            '4h': 4 * 60 * 60_000,
+            '1d': 24 * 60 * 60_000,
+        }
+        limit = 500
+        ms_per_candle = timeframe_to_ms.get(timeframe)
+        if not ms_per_candle:
+            raise ValueError(f"{timeframe} zaman aralığı desteklenmiyor.")
+
+        total_candles_needed = (days * 24 * 60 * 60 * 1000) // ms_per_candle
+
+        all_ohlcv = []
+        since = self.exchange.milliseconds() - days * 24 * 60 * 60 * 1000
+        last_timestamp = None
+
+        while len(all_ohlcv) < total_candles_needed:
+            try:
+                ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since, limit=limit)
+
+                if not ohlcv:
+                    print("Veri alınamadı, devam ediliyor...")
+                    break  # Hiç veri gelmezse çık
+
+                # Eğer aynı timestamp'ten veri dönmeye başladıysa döngüye gerek yok
+                if last_timestamp is not None and ohlcv[-1][0] == last_timestamp:
+                    print("Aynı veriler tekrar dönüyor, veri bitmiş olabilir.")
+                    break
+
+                all_ohlcv.extend(ohlcv)
+                last_timestamp = ohlcv[-1][0]
+                since = last_timestamp + 1  # bir sonraki başlangıç
+
+                if len(ohlcv) < limit:
+                    print("Veri sayısı 500'den az, büyük ihtimalle veri bitti.")
+                    break  # Daha fazla veri yok
+
+                time.sleep(self.exchange.rateLimit / 1000)
+
+            except Exception as e:
+                print(f"Hata oluştu: {e}")
+                break
+
+        # Veri tekrarlarını temizle
+        unique_ohlcv = [list(x) for x in {tuple(row) for row in all_ohlcv}]
+        unique_ohlcv.sort(key=lambda x: x[0])
+
+        df = pd.DataFrame(unique_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('datetime', inplace=True)
+        df.drop('timestamp', axis=1, inplace=True)
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            df[col] = df[col].astype(float)
+
+        print(f"Toplam {len(df)} mum verisi çekildi.")
+        print(f"Tarih aralığı: {df.index[0]} - {df.index[-1]}")
+
+        return df
     def get_available_symbols(self, base_currency='USDT'):
         """
         Mevcut coin çiftlerini listeler
