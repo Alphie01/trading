@@ -12,9 +12,18 @@ import os
 from datetime import datetime, timedelta
 import pickle
 import json
+import matplotlib.pyplot as plt
 
 # **CRITICAL: Use centralized TensorFlow configuration**
-from tf_config import get_tensorflow, is_tensorflow_available
+from tf_config import get_tensorflow, is_tensorflow_available, print_training_device_info, monitor_training_resources, get_current_device
+
+# Optional database integration
+try:
+    from database import TradingDatabase
+    DATABASE_AVAILABLE = True
+except ImportError:
+    print("⚠️ Database module not available - DQN predictions will not be saved")
+    DATABASE_AVAILABLE = False
 
 tf = get_tensorflow()
 TF_AVAILABLE = is_tensorflow_available()
@@ -486,18 +495,18 @@ class DQNAgent:
     Deep Q-Network agent for cryptocurrency trading
     """
     
-    def __init__(self, state_space, action_space, learning_rate=0.0005, gamma=0.95, epsilon=1.0, epsilon_decay=0.9995, epsilon_min=0.05):
+    def __init__(self, state_space, action_space, learning_rate=0.0008, gamma=0.95, epsilon=1.0, epsilon_decay=0.998, epsilon_min=0.02):
         """
-        Initialize DQN agent with overfitting prevention
+        Initialize DQN agent with balanced overfitting prevention
         
         Args:
             state_space (int): Dimension of state space
             action_space (int): Number of possible actions
-            learning_rate (float): Learning rate for neural network (reduced)
+            learning_rate (float): Learning rate for neural network (balanced)
             gamma (float): Discount factor for future rewards
             epsilon (float): Initial exploration rate
-            epsilon_decay (float): Decay rate for exploration (slower decay)
-            epsilon_min (float): Minimum exploration rate (higher minimum)
+            epsilon_decay (float): Decay rate for exploration (balanced)
+            epsilon_min (float): Minimum exploration rate (balanced)
         """
         self.state_space = state_space
         self.action_space = action_space
@@ -507,9 +516,9 @@ class DQNAgent:
         self.epsilon_decay = epsilon_decay
         self.epsilon_min = epsilon_min
         
-        # Experience replay with smaller memory to prevent overfitting
-        self.memory = deque(maxlen=5000)  # Reduced from 10000
-        self.batch_size = 16  # Reduced from 32
+        # Experience replay with balanced memory to prevent overfitting
+        self.memory = deque(maxlen=7500)  # Increased from 5000
+        self.batch_size = 24  # Increased from 16
         
         # Neural networks
         self.q_network = self._build_network()
@@ -524,32 +533,32 @@ class DQNAgent:
         self.validation_scores = []
         self.best_validation_score = float('-inf')
         self.patience_counter = 0
-        self.max_patience = 20  # Early stopping patience
+        self.max_patience = 15  # Reduced patience for faster adaptation
         
     def _build_network(self):
-        """Build a simpler, more regularized deep Q-network"""
+        """Build a balanced, regularized deep Q-network"""
         if not TF_AVAILABLE:
             # Mock model for testing
             return MockDQNModel(self.state_space, self.action_space)
         
-        # **SIMPLIFIED ARCHITECTURE TO PREVENT OVERFITTING**
+        # **BALANCED ARCHITECTURE TO PREVENT OVERFITTING BUT MAINTAIN CAPACITY**
         model = tf.keras.Sequential([
-            # Input layer with L2 regularization
-            tf.keras.layers.Dense(128, input_dim=self.state_space, activation='relu',
-                                kernel_regularizer=tf.keras.regularizers.l2(0.001)),
+            # Input layer with moderate L2 regularization
+            tf.keras.layers.Dense(160, input_dim=self.state_space, activation='relu',
+                                kernel_regularizer=tf.keras.regularizers.l2(0.0005)),
             tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.Dropout(0.4),  # Increased dropout
+            tf.keras.layers.Dropout(0.3),  # Moderate dropout
             
             # Hidden layer 1
-            tf.keras.layers.Dense(64, activation='relu',
-                                kernel_regularizer=tf.keras.regularizers.l2(0.001)),
+            tf.keras.layers.Dense(96, activation='relu',
+                                kernel_regularizer=tf.keras.regularizers.l2(0.0005)),
             tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.Dropout(0.3),
+            tf.keras.layers.Dropout(0.25),
             
-            # Hidden layer 2 (smaller)
-            tf.keras.layers.Dense(32, activation='relu',
-                                kernel_regularizer=tf.keras.regularizers.l2(0.001)),
-            tf.keras.layers.Dropout(0.2),
+            # Hidden layer 2 (balanced)
+            tf.keras.layers.Dense(48, activation='relu',
+                                kernel_regularizer=tf.keras.regularizers.l2(0.0005)),
+            tf.keras.layers.Dropout(0.15),
             
             # Output layer (no activation for Q-values)
             tf.keras.layers.Dense(self.action_space, activation='linear')
@@ -579,22 +588,22 @@ class DQNAgent:
         self.memory.append((state, action, reward, next_state, done))
     
     def act(self, state, training=True):
-        """Choose action using epsilon-greedy policy with validation mode"""
-        # **IMPROVED EXPLORATION STRATEGY**
+        """Choose action using epsilon-greedy policy with balanced exploration"""
+        # **BALANCED EXPLORATION STRATEGY**
         if training and np.random.random() <= self.epsilon:
             return np.random.choice(self.action_space)
         
         q_values = self.q_network.predict(state.reshape(1, -1), verbose=0)
         
-        # **OVERFITTING DETECTION**: Add noise to Q-values during training to prevent overconfidence
+        # **REDUCED NOISE** to allow better learning while preventing overconfidence
         if training and len(self.memory) > self.batch_size:
-            noise_scale = 0.01 * (self.epsilon + 0.1)  # Adaptive noise
+            noise_scale = 0.005 * (self.epsilon + 0.05)  # Much smaller noise
             q_values += np.random.normal(0, noise_scale, q_values.shape)
         
         return np.argmax(q_values[0])
     
     def replay(self):
-        """Train the neural network with overfitting prevention"""
+        """Train the neural network with balanced overfitting prevention"""
         if len(self.memory) < self.batch_size:
             return
         
@@ -615,7 +624,7 @@ class DQNAgent:
         # Use main network to select actions, target network to evaluate
         next_actions = np.argmax(self.q_network.predict(next_states, verbose=0), axis=1)
         
-        # Update Q values with conservative approach
+        # Update Q values with balanced approach
         for i in range(self.batch_size):
             if dones[i]:
                 target = rewards[i]
@@ -623,24 +632,24 @@ class DQNAgent:
                 # Double DQN update
                 target = rewards[i] + self.gamma * next_q_values[i][next_actions[i]]
             
-            # **CONSERVATIVE UPDATE** to prevent overfitting
+            # **LESS CONSERVATIVE UPDATE** for better learning
             current_q = current_q_values[i][actions[i]]
-            learning_rate_decay = 0.1  # Conservative learning
+            learning_rate_decay = 0.3  # Increased from 0.1 for better learning
             updated_q = current_q + learning_rate_decay * (target - current_q)
             current_q_values[i][actions[i]] = updated_q
         
         # Train the network with validation split
         history = self.q_network.fit(states, current_q_values, epochs=1, verbose=0, 
-                                   validation_split=0.2)  # 20% validation
+                                   validation_split=0.15)  # Reduced validation split
         self.loss_history.append(history.history['loss'][0])
         
-        # **EARLY STOPPING CHECK**
+        # **BALANCED EARLY STOPPING CHECK**
         if 'val_loss' in history.history:
             val_loss = history.history['val_loss'][0]
             self.validation_scores.append(-val_loss)  # Negative because lower loss is better
             
-            if len(self.validation_scores) > 5:  # Start checking after 5 iterations
-                recent_avg = np.mean(self.validation_scores[-5:])
+            if len(self.validation_scores) > 3:  # Start checking after 3 iterations
+                recent_avg = np.mean(self.validation_scores[-3:])
                 
                 if recent_avg > self.best_validation_score:
                     self.best_validation_score = recent_avg
@@ -648,12 +657,12 @@ class DQNAgent:
                 else:
                     self.patience_counter += 1
                 
-                # Early stopping
+                # Early stopping with reduced patience
                 if self.patience_counter >= self.max_patience:
                     print(f"🛑 Early stopping triggered after {self.patience_counter} steps without improvement")
-                    self.epsilon = self.epsilon_min  # Stop exploration
+                    self.epsilon = max(self.epsilon_min, self.epsilon * 0.5)  # Faster epsilon reduction
         
-        # **SLOWER EPSILON DECAY** to maintain exploration longer
+        # **BALANCED EPSILON DECAY** to maintain some exploration
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
     
@@ -794,7 +803,7 @@ class DQNTradingModel:
     
     def train(self, df, episodes=100, update_target_freq=10, verbose=True):
         """
-        Train the DQN agent with crash-safe Metal plugin protection
+        Train the DQN agent with crash-safe Metal plugin protection and resource monitoring
         
         Args:
             df (pd.DataFrame): Training data
@@ -809,15 +818,25 @@ class DQNTradingModel:
                 print(f"❌ Data preparation failed: {prep_error}")
                 return None
         
-        print(f"🚀 Starting DQN training with {episodes} episodes...")
-        print(f"🔍 State space: {self.agent.state_space if self.agent else 'Unknown'}")
-        print(f"🔍 Action space: {self.environment.action_space if self.environment else 'Unknown'}")
+        if verbose:
+            print(f"🤖 Starting DQN training with {episodes} episodes...")
+            
+            # **NEW: Print comprehensive resource information for DQN training**
+            print_training_device_info()
+            
+            print(f"🔍 State space: {self.agent.state_space if self.agent else 'Unknown'}")
+            print(f"🔍 Action space: {self.environment.action_space if self.environment else 'Unknown'}")
         
         training_rewards = []
         training_portfolio_values = []
         
         # **CRITICAL: Crash-safe training loop**
         try:
+            # **NEW: Monitor DQN training device**
+            if verbose:
+                current_device = get_current_device()
+                print(f"🎯 DQN Training Device: {current_device}")
+            
             for episode in range(episodes):
                 try:
                     # **Metal-safe episode execution**
@@ -878,10 +897,16 @@ class DQNTradingModel:
                     training_rewards.append(total_reward)
                     training_portfolio_values.append(final_portfolio_value)
                     
-                    if verbose and episode % 10 == 0:
+                    # **NEW: Resource monitoring during DQN training**
+                    if verbose and episode % 20 == 0:
                         print(f"Episode {episode}, Total Reward: {total_reward:.4f}, "
                               f"Portfolio Value: ${final_portfolio_value:.2f}, "
                               f"Epsilon: {self.agent.epsilon:.3f}")
+                        
+                        # Monitor resources every 20 episodes
+                        if episode % 50 == 0 and episode > 0:
+                            print("📊 Resource Check:")
+                            monitor_training_resources()
                 
                 except Exception as episode_error:
                     print(f"❌ Episode {episode} failed: {episode_error}")
@@ -920,15 +945,23 @@ class DQNTradingModel:
             if training_portfolio_values:
                 print(f"Final Portfolio Value: ${training_portfolio_values[-1]:.2f}")
                 print(f"Total Return: {((training_portfolio_values[-1] - self.initial_balance) / self.initial_balance) * 100:.2f}%")
+            
+            # **NEW: Final resource summary**
+            print("\n📊 Final Training Resource Summary:")
+            monitor_training_resources()
+            final_device = get_current_device()
+            print(f"🎯 DQN Training completed on: {final_device}")
         
         return self.training_history
     
-    def predict_action(self, current_state):
+    def predict_action(self, current_state, coin_symbol=None, save_to_db=True):
         """
         Predict the best action for current market state with robust confidence calculation
         
         Args:
             current_state (np.array): Current market state
+            coin_symbol (str): Coin symbol for database logging
+            save_to_db (bool): Whether to save results to database
             
         Returns:
             dict: Action prediction with details
@@ -974,38 +1007,39 @@ class DQNTradingModel:
             margin_confidence = 0.5
         
         # 3. Exploration factor (lower epsilon = higher confidence in training)
-        exploration_confidence = 1.0 - self.agent.epsilon if self.agent else 0.5
+        exploration_confidence = 1.0 - self.agent.epsilon if self.agent else 0.6
         
         # 4. Training maturity (more training = potentially higher confidence, but cap it)
         training_episodes = len(self.training_history.get('rewards', [])) if self.training_history else 0
-        maturity_factor = min(0.8, training_episodes / 100.0)  # Cap at 80%
+        maturity_factor = min(0.7, training_episodes / 50.0)  # Cap at 70%, faster maturity
         
-        # **COMBINED CONFIDENCE** (realistic range: 0.1 to 0.85)
+        # **BALANCED CONFIDENCE** (realistic range: 0.2 to 0.8)
         raw_confidence = (
-            0.3 * uncertainty_factor +
-            0.3 * margin_confidence +
-            0.2 * exploration_confidence +
-            0.2 * maturity_factor
+            0.25 * uncertainty_factor +
+            0.35 * margin_confidence +
+            0.25 * exploration_confidence +
+            0.15 * maturity_factor
         )
         
-        # **CONSERVATIVE CONFIDENCE CAPPING**
-        # Prevent overconfidence by capping maximum confidence
-        max_confidence = 0.85  # Never allow >85% confidence
-        min_confidence = 0.15  # Always maintain some uncertainty
+        # **REALISTIC CONFIDENCE CAPPING**
+        # Prevent both overconfidence and underconfidence
+        max_confidence = 0.80  # Reduced from 85%
+        min_confidence = 0.25  # Increased from 15%
         
         confidence = np.clip(raw_confidence, min_confidence, max_confidence)
         
-        # **REALITY CHECK**: If standard deviation is too high, reduce confidence
-        if np.mean(std_q_values) > 0.5:  # High uncertainty across predictions
-            confidence *= 0.7  # Reduce confidence significantly
+        # **BALANCED REALITY CHECK**: If standard deviation is reasonable, don't penalize too much
+        if np.mean(std_q_values) > 0.3:  # Moderate uncertainty
+            confidence *= 0.85  # Modest reduction
+        elif np.mean(std_q_values) > 0.6:  # High uncertainty
+            confidence *= 0.7   # Larger reduction
         
-        # **MARKET CONDITION ADJUSTMENT**
-        # Reduce confidence in volatile/uncertain market conditions
+        # **MARKET CONDITION ADJUSTMENT** - More lenient
         if len(current_state) > 20:  # Check if we have market volatility data
             try:
                 market_volatility = current_state[20]  # Assuming volatility is at index 20
-                if market_volatility > 0.8:  # High volatility
-                    confidence *= 0.8
+                if market_volatility > 0.9:  # Very high volatility
+                    confidence *= 0.85  # Modest penalty
             except:
                 pass  # Ignore if volatility data not available
         
@@ -1013,7 +1047,17 @@ class DQNTradingModel:
         action_name = self.environment.action_meanings[best_action]
         reasoning = self._generate_action_reasoning(mean_q_values, best_action, current_state, confidence)
         
-        return {
+        # Get current price from state if available
+        current_price = 0
+        try:
+            # Assuming price is in the state (adjust index as needed)
+            if len(current_state) > 0:
+                current_price = current_state[0] if hasattr(current_state, '__len__') else 0
+        except:
+            current_price = 0
+        
+        # Prepare prediction result
+        prediction_result = {
             'action': int(best_action),
             'action_name': action_name,
             'confidence': float(confidence),
@@ -1022,8 +1066,25 @@ class DQNTradingModel:
             'uncertainty_factor': float(uncertainty_factor),
             'margin_confidence': float(margin_confidence),
             'reasoning': reasoning,
-            'model_type': 'DQN_Robust'
+            'model_type': 'DQN_Robust',
+            'current_price': float(current_price),
+            'epsilon': float(self.agent.epsilon) if self.agent else 0.0,
+            'analysis_timestamp': datetime.now().isoformat()
         }
+        
+        # **DATABASE INTEGRATION**: Save DQN analysis to database
+        if save_to_db and DATABASE_AVAILABLE and coin_symbol:
+            try:
+                db = TradingDatabase()
+                analysis_id = db.save_dqn_analysis(coin_symbol, prediction_result)
+                if analysis_id:
+                    prediction_result['database_id'] = analysis_id
+                    print(f"📊 DQN analysis saved to database (ID: {analysis_id})")
+            except Exception as db_error:
+                print(f"⚠️ Database save failed: {db_error}")
+                # Continue without database - don't break the prediction
+        
+        return prediction_result
     
     def _generate_action_reasoning(self, q_values, best_action, current_state, confidence):
         """Generate human-readable reasoning for the action with confidence context"""
@@ -1037,15 +1098,15 @@ class DQNTradingModel:
         except:
             portfolio_value_ratio, position_ratio, rsi = 1.0, 0.0, 50.0
         
-        # **ENHANCED REASONING WITH CONFIDENCE CONTEXT**
-        reasoning = f"🤖 DQN Robust Analysis: {action_name}\n"
+        # **ENHANCED REASONING WITH BALANCED CONFIDENCE CONTEXT**
+        reasoning = f"🤖 DQN Balanced Analysis: {action_name}\n"
         reasoning += f"📊 Confidence: {confidence:.1%} "
         
-        # Confidence level interpretation
-        if confidence > 0.7:
+        # Confidence level interpretation - more realistic ranges
+        if confidence > 0.65:
             reasoning += "(High - Strong signal)\n"
-        elif confidence > 0.5:
-            reasoning += "(Moderate - Decent signal)\n"
+        elif confidence > 0.45:
+            reasoning += "(Moderate - Good signal)\n"
         elif confidence > 0.3:
             reasoning += "(Low - Weak signal)\n"
         else:
@@ -1058,20 +1119,20 @@ class DQNTradingModel:
         
         reasoning += f"🎯 Q-value margin: {q_margin:.3f} (advantage over next best action)\n"
         
-        # Action-specific analysis
+        # Action-specific analysis with balanced confidence context
         if best_action == 0:  # HOLD
             reasoning += "• Market conditions suggest waiting\n"
             reasoning += f"• RSI: {rsi:.1f} (neutral zone)\n"
             reasoning += f"• Portfolio balanced at {portfolio_value_ratio:.1%}\n"
-            if confidence < 0.4:
-                reasoning += "• ⚠️ Low confidence suggests uncertain market conditions"
+            if confidence < 0.35:
+                reasoning += "• ⚠️ Consider market volatility before acting"
         elif best_action in [1, 2, 3, 4]:  # BUY actions
             buy_strength = ["25%", "50%", "75%", "100%"][best_action - 1]
             reasoning += "• Bullish signals detected\n"
             reasoning += f"• RSI: {rsi:.1f} (favorable for buying)\n"
             reasoning += f"• Current position: {position_ratio:.1%} of portfolio\n"
             reasoning += f"• Recommended buy size: {buy_strength}\n"
-            if confidence < 0.5:
+            if confidence < 0.4:
                 reasoning += "• ⚠️ Consider smaller position due to uncertainty"
         else:  # SELL actions (5-8)
             sell_strength = ["25%", "50%", "75%", "100%"][best_action - 5]
@@ -1079,14 +1140,16 @@ class DQNTradingModel:
             reasoning += f"• RSI: {rsi:.1f} (suggests selling pressure)\n"
             reasoning += f"• Current position: {position_ratio:.1%} of portfolio\n"
             reasoning += f"• Recommended sell size: {sell_strength}\n"
-            if confidence < 0.5:
+            if confidence < 0.4:
                 reasoning += "• ⚠️ Consider partial sell due to uncertainty"
         
-        # Risk warning based on confidence
+        # Risk warning based on balanced confidence thresholds
         if confidence < 0.3:
             reasoning += "\n🚨 HIGH UNCERTAINTY: Consider manual review before acting"
-        elif confidence < 0.5:
+        elif confidence < 0.4:
             reasoning += "\n⚠️ MODERATE UNCERTAINTY: Use reduced position sizes"
+        elif confidence > 0.65:
+            reasoning += "\n✅ HIGH CONFIDENCE: Strong signal detected"
         
         return reasoning
     

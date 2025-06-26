@@ -124,85 +124,134 @@ class CryptoLSTMModel:
         
         return self.model
     
-    def train_model(self, X_train, y_train, X_val, y_val, 
-                   epochs=None, batch_size=32, patience=15, verbose=1, 
-                   use_early_stopping=True):
+    def train_model(self, X_train, y_train, X_val, y_val, epochs=50, batch_size=32, verbose=True, use_early_stopping=True):
         """
-        Modeli eğitir
+        Train the LSTM model with comprehensive resource monitoring
         
         Args:
-            X_train (np.array): Eğitim özellikleri
-            y_train (np.array): Eğitim hedefleri
-            X_val (np.array): Doğrulama özellikleri
-            y_val (np.array): Doğrulama hedefleri
-            epochs (int): Epoch sayısı (None ise environment'tan alır)
-            batch_size (int): Batch boyutu
-            patience (int): Early stopping için sabır
-            verbose (int): Eğitim çıktı seviyesi (0=sessiz, 1=progress bar, 2=bir satır per epoch)
-            use_early_stopping (bool): Early stopping kullanılsın mı (İlk eğitim için False önerilir)
-        
+            X_train, y_train: Training data
+            X_val, y_val: Validation data
+            epochs (int): Number of training epochs
+            batch_size (int): Training batch size
+            verbose (bool): Print training progress
+            use_early_stopping (bool): Use early stopping
+            
         Returns:
-            History: Eğitim geçmişi
+            History object from model training
         """
-        # Epochs parametresi verilmemişse environment'tan al
-        if epochs is None:
-            epochs = int(os.getenv('LSTM_EPOCHS', 1000))  # Varsayılan: 30 epoch
         if self.model is None:
-            raise ValueError("Model henüz oluşturulmadı. Önce build_model() çalıştırın.")
+            raise ValueError("Model not built! Call build_model() first.")
         
-        # Callbacks listesi
+        if verbose:
+            print("🏋️ Starting LSTM model training...")
+            
+            # **NEW: Print comprehensive resource information**
+            from tf_config import print_training_device_info, monitor_training_resources
+            print_training_device_info()
+        
+        # Prepare callbacks
         callbacks = []
         
-        # **YENİ: Early stopping isteğe bağlı**
         if use_early_stopping:
-            callbacks.append(EarlyStopping(
+            early_stopping = EarlyStopping(
                 monitor='val_loss',
-                patience=patience,
+                patience=10,
                 restore_best_weights=True,
-                verbose=1 if verbose > 0 else 0
-            ))
-            if verbose > 0:
-                print(f"📊 Early stopping aktif (patience={patience})")
-        else:
-            if verbose > 0:
-                print("🔄 Early stopping devre dışı - tüm epoch'lar çalışacak")
-        
-        # Diğer callbacks (her zaman aktif)
-        callbacks.extend([
-            ReduceLROnPlateau(
-                monitor='val_loss',
-                factor=0.5,
-                patience=max(5, patience//3),  # Early stopping'den daha düşük patience
-                min_lr=1e-7,
-                verbose=1 if verbose > 0 else 0
-            ),
-            ModelCheckpoint(
-                'best_crypto_model.h5',
-                monitor='val_loss',
-                save_best_only=True,
-                verbose=1 if verbose > 0 else 0
+                verbose=1 if verbose else 0
             )
-        ])
+            callbacks.append(early_stopping)
         
-        if verbose > 0:
-            print("Model eğitimi başlıyor...")
-            print(f"Eğitim verisi: {X_train.shape}")
-            print(f"Doğrulama verisi: {X_val.shape}")
-            print(f"Toplam epoch: {epochs}")
-        
-        # Modeli eğit
-        self.history = self.model.fit(
-            X_train, y_train,
-            validation_data=(X_val, y_val),
-            epochs=epochs,
-            batch_size=batch_size,
-            callbacks=callbacks,
-            verbose=verbose
+        # Learning rate scheduler
+        lr_scheduler = ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
+            patience=5,
+            min_lr=0.00001,
+            verbose=1 if verbose else 0
         )
+        callbacks.append(lr_scheduler)
         
-        if verbose > 0:
-            print("Model eğitimi tamamlandı!")
-        return self.history
+        if verbose:
+            print("🎯 Training Configuration:")
+            print(f"   📊 Training samples: {len(X_train)}")
+            print(f"   📈 Validation samples: {len(X_val)}")
+            print(f"   🔄 Epochs: {epochs}")
+            print(f"   📦 Batch size: {batch_size}")
+            print(f"   🛑 Early stopping: {'Enabled' if use_early_stopping else 'Disabled'}")
+            
+            # **NEW: Monitor initial resource state**
+            print("\n📊 Initial Resource State:")
+            monitor_training_resources()
+        
+        try:
+            # **CRITICAL: Force CPU training to prevent Metal crashes**
+            print(f"\n🚀 Starting LSTM training on device...")
+            
+            # Monitor resources before training
+            if verbose:
+                from tf_config import get_current_device
+                current_device = get_current_device()
+                print(f"🎯 Training Device: {current_device}")
+            
+            history = self.model.fit(
+                X_train, y_train,
+                epochs=epochs,
+                batch_size=batch_size,
+                validation_data=(X_val, y_val),
+                callbacks=callbacks,
+                verbose=1 if verbose else 0,
+                shuffle=True
+            )
+            
+            # **NEW: Monitor resources after training**
+            if verbose:
+                print("\n📊 Post-Training Resource State:")
+                monitor_training_resources()
+            
+            # Store training history
+            self.training_history = history
+            
+            if verbose:
+                final_loss = history.history['loss'][-1]
+                final_val_loss = history.history['val_loss'][-1]
+                print(f"\n✅ LSTM training completed!")
+                print(f"📉 Final Training Loss: {final_loss:.6f}")
+                print(f"📊 Final Validation Loss: {final_val_loss:.6f}")
+                print(f"🔄 Epochs Completed: {len(history.history['loss'])}")
+                
+                # Resource efficiency summary
+                training_device = get_current_device()
+                print(f"🎯 Training completed on: {training_device}")
+            
+            return history
+            
+        except Exception as e:
+            print(f"❌ LSTM training error: {str(e)}")
+            print("🔄 Attempting CPU-only fallback training...")
+            
+            try:
+                # **Metal-safe fallback training**
+                with tf.device('/CPU:0'):
+                    history = self.model.fit(
+                        X_train, y_train,
+                        epochs=epochs,
+                        batch_size=batch_size,
+                        validation_data=(X_val, y_val),
+                        callbacks=callbacks,
+                        verbose=1 if verbose else 0,
+                        shuffle=True
+                    )
+                
+                self.training_history = history
+                if verbose:
+                    print("✅ CPU fallback training successful!")
+                    print("🖥️  Training Device: CPU (Fallback mode)")
+                    
+                return history
+                
+            except Exception as fallback_error:
+                print(f"❌ Even CPU fallback failed: {fallback_error}")
+                return None
     
     def evaluate_model(self, X_test, y_test):
         """

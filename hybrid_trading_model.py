@@ -22,6 +22,14 @@ from data_preprocessor import CryptoDataPreprocessor
 # **CRITICAL: Use centralized TensorFlow configuration**
 from tf_config import get_tensorflow, is_tensorflow_available
 
+# Optional database integration
+try:
+    from database import TradingDatabase
+    DATABASE_AVAILABLE = True
+except ImportError:
+    print("⚠️ Database module not available - Hybrid predictions will not be saved")
+    DATABASE_AVAILABLE = False
+
 tf = get_tensorflow()
 TF_AVAILABLE = is_tensorflow_available()
 
@@ -56,8 +64,8 @@ class HybridTradingModel:
         # Performance tracking
         self.performance_history = []
         self.ensemble_weights = {
-            'lstm': 0.4,
-            'dqn': 0.4,
+            'lstm': 0.35,
+            'dqn': 0.45,     # Increased DQN weight
             'technical': 0.2
         }
         
@@ -81,7 +89,7 @@ class HybridTradingModel:
         
     def train_hybrid_model(self, df, lstm_epochs=30, dqn_episodes=100, verbose=True):
         """
-        Train both LSTM and DQN components
+        Train both LSTM and DQN components with comprehensive resource monitoring
         
         Args:
             df (pd.DataFrame): Training data
@@ -91,6 +99,24 @@ class HybridTradingModel:
         """
         if verbose:
             print("🚀 Starting hybrid model training...")
+            
+            # **NEW: Comprehensive resource monitoring for hybrid training**
+            try:
+                from tf_config import print_training_device_info, monitor_training_resources, get_current_device
+                print("\n" + "🎯" + "="*58 + "🎯")
+                print("🔥 HYBRID AI TRAINING - RESOURCE ALLOCATION")
+                print("🎯" + "="*58 + "🎯")
+                
+                print_training_device_info()
+                
+                print(f"\n🧠 Hybrid Training Configuration:")
+                print(f"   📊 Data points: {len(df)}")
+                print(f"   🧠 LSTM epochs: {lstm_epochs}")
+                print(f"   🤖 DQN episodes: {dqn_episodes}")
+                print(f"   ⏰ Sequence length: {self.sequence_length}")
+                
+            except ImportError:
+                print("⚠️ Resource monitoring not available")
         
         # Prepare models if not done
         if self.lstm_model is None or self.dqn_model is None:
@@ -98,9 +124,21 @@ class HybridTradingModel:
         
         # Step 1: Train LSTM for price prediction
         if verbose:
-            print("\n1️⃣ Training LSTM Price Predictor...")
+            print("\n" + "="*60)
+            print("1️⃣ LSTM PRICE PREDICTOR TRAINING")
+            print("="*60)
         
         try:
+            # Monitor resources before LSTM training
+            if verbose:
+                try:
+                    current_device = get_current_device()
+                    print(f"🎯 LSTM Training Device: {current_device}")
+                    print("\n📊 Pre-LSTM Resource State:")
+                    monitor_training_resources()
+                except:
+                    pass
+            
             # Process data for LSTM
             processed_df = self.preprocessor.prepare_data(df, use_technical_indicators=True)
             scaled_data = self.preprocessor.scale_data(processed_df, fit_scaler=True)
@@ -137,20 +175,46 @@ class HybridTradingModel:
             if verbose:
                 print("✅ LSTM training completed")
                 
+                # **NEW: Post-LSTM resource monitoring**
+                try:
+                    print("\n📊 Post-LSTM Resource State:")
+                    monitor_training_resources()
+                except:
+                    pass
+                
         except Exception as e:
             print(f"❌ LSTM training error: {e}")
             return False
         
         # Step 2: Enhanced DQN training with LSTM predictions
         if verbose:
-            print("\n2️⃣ Training DQN Action Selector with LSTM integration...")
+            print("\n" + "="*60)
+            print("2️⃣ DQN ACTION SELECTOR TRAINING (LSTM-Enhanced)")
+            print("="*60)
         
         try:
+            # Monitor resources before DQN training
+            if verbose:
+                try:
+                    current_device = get_current_device()
+                    print(f"🎯 DQN Training Device: {current_device}")
+                    print("\n📊 Pre-DQN Resource State:")
+                    monitor_training_resources()
+                except:
+                    pass
+            
             # Train DQN with LSTM-enhanced environment
             self._train_lstm_enhanced_dqn(df, dqn_episodes, verbose)
             self.dqn_trained = True
             if verbose:
                 print("✅ DQN training completed")
+                
+                # **NEW: Post-DQN resource monitoring**
+                try:
+                    print("\n📊 Post-DQN Resource State:")
+                    monitor_training_resources()
+                except:
+                    pass
                 
         except Exception as e:
             print(f"❌ DQN training error: {e}")
@@ -158,13 +222,38 @@ class HybridTradingModel:
         
         # Step 3: Ensemble weight optimization
         if verbose:
-            print("\n3️⃣ Optimizing ensemble weights...")
+            print("\n" + "="*60)
+            print("3️⃣ ENSEMBLE WEIGHT OPTIMIZATION")
+            print("="*60)
         
         self._optimize_ensemble_weights(df)
         self.hybrid_trained = True
         
         if verbose:
             print("🎉 Hybrid model training completed!")
+            
+            # **NEW: Final hybrid training summary**
+            try:
+                print("\n" + "🎯" + "="*58 + "🎯")
+                print("🏁 HYBRID TRAINING COMPLETED - FINAL SUMMARY")
+                print("🎯" + "="*58 + "🎯")
+                
+                print("\n📊 Final Resource Usage:")
+                monitor_training_resources()
+                
+                final_device = get_current_device()
+                print(f"\n🎯 All training completed on: {final_device}")
+                
+                print(f"\n🏆 Hybrid Model Status:")
+                print(f"   🧠 LSTM trained: {'✅' if self.lstm_trained else '❌'}")
+                print(f"   🤖 DQN trained: {'✅' if self.dqn_trained else '❌'}")
+                print(f"   🔗 Hybrid ready: {'✅' if self.hybrid_trained else '❌'}")
+                print(f"   ⚖️ Ensemble weights: {self.ensemble_weights}")
+                
+                print("\n🎯" + "="*58 + "🎯")
+                
+            except ImportError:
+                print("⚠️ Final resource monitoring not available")
             
         return True
     
@@ -190,14 +279,20 @@ class HybridTradingModel:
                 # Combine DQN state with LSTM features
                 enhanced_state = np.concatenate([state[:-3], lstm_features])  # Replace placeholder LSTM features
                 
-                action = self.dqn_model.agent.act(enhanced_state, training=True)
+                if self.dqn_model and self.dqn_model.agent is not None:
+                    action = self.dqn_model.agent.act(enhanced_state, training=True)
+                else:
+                    action = 0  # Default to HOLD if agent not available
+                    
                 next_state, reward, done, info = enhanced_env.step(action)
                 
                 # Enhanced reward with LSTM confidence
                 lstm_confidence = lstm_features[1]  # LSTM confidence
                 enhanced_reward = reward * (1 + lstm_confidence * 0.1)  # Boost reward if LSTM is confident
                 
-                self.dqn_model.agent.remember(enhanced_state, action, enhanced_reward, next_state, done)
+                if self.dqn_model and self.dqn_model.agent is not None:
+                    self.dqn_model.agent.remember(enhanced_state, action, enhanced_reward, next_state, done)
+                    
                 state = next_state
                 total_reward += enhanced_reward
                 steps += 1
@@ -206,7 +301,10 @@ class HybridTradingModel:
                     break
             
             # Train the agent
-            if len(self.dqn_model.agent.memory) >= self.dqn_model.agent.batch_size:
+            if (self.dqn_model and self.dqn_model.agent is not None and 
+                hasattr(self.dqn_model.agent, 'memory') and 
+                hasattr(self.dqn_model.agent, 'batch_size') and
+                len(self.dqn_model.agent.memory) >= self.dqn_model.agent.batch_size):
                 self.dqn_model.agent.replay()
             
             # Update target network
@@ -298,13 +396,14 @@ class HybridTradingModel:
     def _optimize_ensemble_weights(self, df):
         """Optimize ensemble weights based on historical performance"""
         
-        # Test different weight combinations
+        # Test different weight combinations with better DQN representation
         weight_combinations = [
-            {'lstm': 0.5, 'dqn': 0.4, 'technical': 0.1},
-            {'lstm': 0.4, 'dqn': 0.5, 'technical': 0.1},
-            {'lstm': 0.3, 'dqn': 0.5, 'technical': 0.2},
-            {'lstm': 0.4, 'dqn': 0.4, 'technical': 0.2},
-            {'lstm': 0.6, 'dqn': 0.3, 'technical': 0.1},
+            {'lstm': 0.35, 'dqn': 0.45, 'technical': 0.2},  # Baseline - DQN focused
+            {'lstm': 0.4, 'dqn': 0.5, 'technical': 0.1},    # Strong DQN
+            {'lstm': 0.3, 'dqn': 0.55, 'technical': 0.15},  # Very strong DQN
+            {'lstm': 0.45, 'dqn': 0.4, 'technical': 0.15},  # LSTM focused
+            {'lstm': 0.5, 'dqn': 0.35, 'technical': 0.15},  # Strong LSTM
+            {'lstm': 0.25, 'dqn': 0.6, 'technical': 0.15},  # Maximum DQN weight
         ]
         
         best_weights = None
@@ -414,12 +513,14 @@ class HybridTradingModel:
         except:
             return 0.0
     
-    def predict_hybrid_action(self, current_data):
+    def predict_hybrid_action(self, current_data, coin_symbol=None, save_to_db=True):
         """
         Generate hybrid prediction combining LSTM, DQN, and technical analysis
         
         Args:
             current_data (pd.DataFrame): Current market data
+            coin_symbol (str): Coin symbol for database logging
+            save_to_db (bool): Whether to save results to database
             
         Returns:
             dict: Comprehensive prediction with all model outputs
@@ -449,7 +550,8 @@ class HybridTradingModel:
                 lstm_prediction, dqn_prediction, technical_analysis
             )
             
-            return {
+            # Prepare hybrid result
+            hybrid_result = {
                 'success': True,
                 'lstm_prediction': lstm_prediction,
                 'dqn_prediction': dqn_prediction,
@@ -459,6 +561,20 @@ class HybridTradingModel:
                 'timestamp': datetime.now().isoformat(),
                 'model_type': 'Hybrid_LSTM_DQN'
             }
+            
+            # **DATABASE INTEGRATION**: Save hybrid analysis to database
+            if save_to_db and DATABASE_AVAILABLE and coin_symbol and hybrid_result['success']:
+                try:
+                    db = TradingDatabase()
+                    analysis_id = db.save_hybrid_analysis(coin_symbol, hybrid_result)
+                    if analysis_id:
+                        hybrid_result['database_id'] = analysis_id
+                        print(f"📊 Hybrid analysis saved to database (ID: {analysis_id})")
+                except Exception as db_error:
+                    print(f"⚠️ Database save failed: {db_error}")
+                    # Continue without database - don't break the prediction
+            
+            return hybrid_result
             
         except Exception as e:
             return {
