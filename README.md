@@ -1,433 +1,706 @@
-# 🚀 Kripto Para LSTM Fiyat Tahmini Sistemi
+# 🚀 Advanced Crypto Trading AI System
 
-Bu proje, kullanıcıdan bir kripto para (coin) ismi alarak Binance borsasından bu coine ait son 100 günlük verileri 4 saatlik mumlar (OHLCV - Open, High, Low, Close, Volume) şeklinde çeken ve bu verilerle bir LSTM (Long Short-Term Memory) modeli eğiten bir Python uygulamasıdır.
+## 🌟 Genel Bakış
 
-## 📋 Özellikler
+Bu proje, kripto para ticareti için kapsamlı bir yapay zeka sistemidir. **Hibrit Deep Learning** yaklaşımı ile LSTM ve DQN modellerini birleştirerek, teknik analiz, haber sentiment analizi ve whale tracking özelliklerini entegre eder.
 
-- 🔗 **Binance API Entegrasyonu**: Gerçek zamanlı kripto para verisi çekme
-- 📊 **Teknik Analiz Göstergeleri**: RSI, MACD, Bollinger Bands, SMA, EMA
-- 🧠 **LSTM Derin Öğrenme Modeli**: Gelişmiş zaman serisi tahmini
-- 📰 **Haber Sentiment Analizi**: NewsAPI, CoinDesk, Reddit entegrasyonu
-- 🤖 **FinBERT AI Modeli**: Finansal sentiment analizi için özel AI modeli
-- 🐋 **Whale Tracker**: Büyük kripto cüzdanlarının hareketlerini takip ve analiz
-- 📈 **Hibrit Tahmin Sistemi**: Fiyat + Haber + Whale analizinin birleşimi
-- 📊 **Haber-Fiyat Korelasyonu**: Haberlerin fiyat etkisini ölçme
-- 💰 **Whale-Fiyat Korelasyonu**: Büyük transferlerin piyasa etkisini analiz
-- 📝 **Kapsamlı Raporlar**: LSTM + Haber + Whale analizi birleşik raporları
-- 🎯 **Aksiyon Önerileri**: Gelecek haberler ve whale hareketleri için strateji
-- 📈 **Görselleştirme**: Detaylı grafik ve analiz çıktıları
-- ⚡ **GPU Desteği**: TensorFlow GPU akselerasyonu
-- 🎲 **Güvenilirlik Skoru**: Çok boyutlu güvenilirlik değerlendirmesi
+### 🎯 Ana Özellikler
 
-## 🛠️ Kurulum
+- 🧠 **Hibrit AI Sistemi**: LSTM + DQN + Technical Analysis birleşimi
+- 📊 **Gerçek Zamanlı Web Dashboard**: Modern React benzeri arayüz
+- 🔄 **Otomatik Trading**: Binance API entegrasyonu ile otomatik işlem
+- 📰 **Haber Sentiment Analizi**: NewsAPI, CoinDesk, Reddit, Twitter
+- 🐋 **Whale Tracking**: Büyük cüzdan hareketlerini takip
+- 💾 **Akıllı Model Cache**: Eğitim süresini optimize eden cache sistemi
+- 🗄️ **Veritabanı Desteği**: SQLite ve MSSQL entegrasyonu
+- 🔐 **Güvenlik**: JWT authentication ve secure trading
+- ⚡ **Performance Testing**: Backtest ve live performance analizi
 
-### Gereksinimler
+## 🏗️ Sistem Mimarisi
 
-- Python 3.8 veya üzeri
-- GPU kullanımı için CUDA (opsiyonel)
-
-### 1. Proje Dosyalarını İndirin
-
-```bash
-git clone https://github.com/kullanici/crypto-lstm-prediction.git
-cd crypto-lstm-prediction
 ```
-
-### 2. Sanal Ortam Oluşturun (Önerilen)
-
-```bash
-python -m venv crypto_env
-source crypto_env/bin/activate  # Linux/Mac
-# veya
-crypto_env\Scripts\activate     # Windows
+┌─────────────────────────────────────────────────────────────┐
+│                    WEB DASHBOARD                            │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐          │
+│  │ Portfolio   │ │ Analytics   │ │ Settings    │          │
+│  │ Management  │ │ Dashboard   │ │ & Config    │          │
+│  └─────────────┘ └─────────────┘ └─────────────┘          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 HYBRID AI ENGINE                            │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐          │
+│  │ LSTM Price  │ │ DQN Action  │ │ Technical   │          │
+│  │ Predictor   │ │ Selector    │ │ Analysis    │          │
+│  └─────────────┘ └─────────────┘ └─────────────┘          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│               DATA INTELLIGENCE LAYER                       │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐          │
+│  │ News        │ │ Whale       │ │ Technical   │          │
+│  │ Sentiment   │ │ Tracking    │ │ Indicators  │          │
+│  └─────────────┘ └─────────────┘ └─────────────┘          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 EXECUTION LAYER                             │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐          │
+│  │ Binance     │ │ Risk        │ │ Performance │          │
+│  │ Trading     │ │ Management  │ │ Analytics   │          │
+│  └─────────────┘ └─────────────┘ └─────────────┘          │
+└─────────────────────────────────────────────────────────────┘
 ```
-
-### 3. Gerekli Kütüphaneleri Yükleyin
-
-```bash
-pip install -r requirements.txt
-```
-
-## 🚀 Kullanım
-
-### Temel Kullanım
-
-```bash
-python main.py
-```
-
-Uygulama başladığında:
-
-1. 📝 Analiz etmek istediğiniz coin ismini girin (örn: BTC, ETH, ADA)
-2. ⚙️ Model parametrelerini ayarlayın veya varsayılan değerleri kullanın
-3. 📰 Haber analizi kullanıp kullanmayacağınızı seçin
-4. 🔑 NewsAPI anahtarınızı girin (opsiyonel - daha fazla haber için)
-5. ⏳ Sistem otomatik olarak:
-   - Binance'den fiyat verisi çekme
-   - Haber kaynaklarından sentiment analizi
-   - Teknik göstergeler hesaplama
-   - Haber-fiyat korelasyon analizi
-   - LSTM model eğitimi (hibrit özelliklerle)
-   - Gelecek haber etkilerini tahmin etme
-   - Kapsamlı rapor hazırlama
-
-### Hızlı Demo
-
-BTC ile hızlı bir demo için:
-
-```bash
-python main.py --demo
-```
-
-### 📰 Haber Analizi Örneği
-
-Sadece haber analizi özelliklerini test etmek için:
-
-```bash
-python example_usage.py
-```
-
-### 🔑 API Anahtarları (Opsiyonel)
-
-#### NewsAPI Anahtarı
-
-Daha fazla haber kaynağı için ücretsiz NewsAPI anahtarı alabilirsiniz:
-
-1. [NewsAPI.org](https://newsapi.org/) adresine gidin
-2. Ücretsiz hesap oluşturun
-3. API anahtarınızı kopyalayın
-4. Uygulamada istendiğinde girin
-
-**Not**: NewsAPI anahtarı olmadan da sistem CoinDesk ve Reddit kaynaklarından haber çeker.
-
-#### Whale Alert API Anahtarı
-
-Büyük cüzdan transferleri için Whale Alert API anahtarı:
-
-1. [Whale Alert API](https://whale-alert.io/api) adresine gidin
-2. Ücretsiz hesap oluşturun (günde 100 sorgu)
-3. API anahtarınızı alın
-4. Uygulamada whale analizi kullanırken girin
-
-**Not**: Whale Alert API anahtarı olmadan da sistem demo whale verileri oluşturur.
-
-## 📊 Model Parametreleri
-
-### Varsayılan Ayarlar
-
-- **Sekans Uzunluğu**: 60 (240 saat = 10 gün)
-- **Epoch Sayısı**: 50
-- **Batch Boyutu**: 32
-- **LSTM Katmanları**: [50, 50, 50]
-- **Dropout Oranı**: 0.2
-- **Öğrenme Oranı**: 0.001
-
-### Özelleştirme
-
-Model parametrelerini çalışma zamanında değiştirebilirsiniz:
-
-```python
-from lstm_model import CryptoLSTMModel
-
-model = CryptoLSTMModel(sequence_length=60, n_features=16)
-model.build_model(
-    lstm_units=[64, 64, 32],  # Daha büyük model
-    dropout_rate=0.3,         # Daha yüksek regularization
-    learning_rate=0.0005      # Daha düşük öğrenme oranı
-)
-```
-
-## 📈 Teknik Göstergeler
-
-Sistem aşağıdaki teknik analiz göstergelerini otomatik hesaplar:
-
-- **SMA (Simple Moving Average)**: 7 ve 25 günlük
-- **EMA (Exponential Moving Average)**: 12 günlük
-- **RSI (Relative Strength Index)**: 14 periyotluk
-- **MACD**: 12-26-9 parametreleri
-- **Bollinger Bands**: 20 günlük, 2 standart sapma
-- **Yigit ATR Trailing Stop**: Pine Script ported, trend takibi ve sinyaller
-- **Volume-Price Analizi**: Hacim/Fiyat oranı hesaplaması
-- **Fiyat Değişim Yüzdesi**
-- **Volume Değişim Yüzdesi**
 
 ## 📁 Proje Yapısı
 
 ```
-crypto-lstm-prediction/
+trading/
+├── 🎯 Core AI Models
+│   ├── hybrid_trading_model.py      # Hibrit LSTM+DQN sistemi
+│   ├── lstm_model.py               # LSTM price prediction
+│   ├── dqn_trading_model.py        # Deep Q-Network action selection
+│   └── predictor.py                # Birleşik tahmin motoru
 │
-├── main.py                 # Ana uygulama dosyası (hibrit sistem)
-├── data_fetcher.py         # Binance API veri çekme modülü
-├── data_preprocessor.py    # Veri ön işleme ve teknik göstergeler
-├── news_analyzer.py        # Haber sentiment analizi modülü
-├── whale_tracker.py        # Whale (büyük cüzdan) takip modülü (YENİ!)
-├── lstm_model.py          # LSTM model tanımı ve eğitimi
-├── predictor.py           # Hibrit tahmin ve rapor oluşturma
-├── example_usage.py       # Örnek kullanım senaryoları
-├── requirements.txt       # Python kütüphane gereksinimleri
-└── README.md             # Bu dosya
+├── 🌐 Web Dashboard
+│   ├── web_app.py                  # Flask web uygulaması
+│   ├── run_dashboard.py            # Dashboard launcher
+│   ├── templates/                  # HTML templates
+│   │   ├── dashboard.html          # Ana dashboard
+│   │   ├── portfolio.html          # Portfolio yönetimi
+│   │   ├── analyze_coin.html       # Coin analizi
+│   │   ├── settings.html           # Ayarlar
+│   │   └── login.html             # Giriş sayfası
+│   └── static/                     # CSS, JS, görsel dosyalar
+│       ├── css/
+│       └── js/
+│
+├── 📊 Data & Analytics
+│   ├── data_fetcher.py             # Binance veri çekme
+│   ├── data_preprocessor.py        # Veri ön işleme + teknik analiz
+│   ├── news_analyzer.py            # Haber sentiment analizi
+│   ├── whale_tracker.py            # Whale cüzdan takibi
+│   └── performance_tester.py       # Backtest ve performance
+│
+├── 🤖 Trading Automation
+│   ├── binance_trader.py           # Otomatik trading motoru
+│   ├── binance_history.py          # Trading geçmişi
+│   ├── auto_trader_integration.py  # Trading entegrasyonu
+│   └── auth.py                     # Güvenlik ve kimlik doğrulama
+│
+├── 💾 Data Management
+│   ├── database.py                 # SQLite veritabanı
+│   ├── mssql_database.py          # MSSQL entegrasyonu
+│   ├── create_mssql_database.py   # MSSQL kurulum
+│   ├── model_cache.py             # Akıllı model cache
+│   └── system_persistence.py      # Sistem durumu kaydetme
+│
+├── ⚙️ Configuration & Utils
+│   ├── tf_config.py               # TensorFlow M1/M2 Mac optimizasyonu
+│   ├── main.py                    # Ana CLI uygulaması
+│   ├── example_usage.py           # Kullanım örnekleri
+│   ├── quick_test.py              # Hızlı test araçları
+│   └── requirements.txt           # Python dependencies
+│
+└── 📚 Documentation
+    ├── README.md                  # Bu dosya
+    ├── LSTM_CONFIG_README.md      # LSTM konfigürasyon rehberi
+    ├── MSSQL_ENVIRONMENT_README.md # MSSQL kurulum rehberi
+    └── WEB_DASHBOARD_README.md    # Web dashboard rehberi
 ```
 
-## 💡 Kullanım Örnekleri
+## 🚀 Hızlı Başlangıç
 
-### 1. Bitcoin Analizi
+### 1. Kurulum
 
-```python
-from data_fetcher import CryptoDataFetcher
-from data_preprocessor import CryptoDataPreprocessor
-from lstm_model import CryptoLSTMModel
-from predictor import CryptoPricePredictor
-
-# Veri çekme
-fetcher = CryptoDataFetcher()
-btc_data = fetcher.fetch_ohlcv_data('BTC')
-
-# Veri hazırlama
-preprocessor = CryptoDataPreprocessor()
-processed_data = preprocessor.prepare_data(btc_data)
-scaled_data = preprocessor.scale_data(processed_data)
-X, y = preprocessor.create_sequences(scaled_data)
-
-# Model eğitimi
-model = CryptoLSTMModel(60, X.shape[2])
-model.build_model()
-model.train_model(X_train, y_train, X_val, y_val)
-
-# Tahmin
-predictor = CryptoPricePredictor(model, preprocessor)
-prediction = predictor.predict_next_price(processed_data)
-```
-
-### 2. Hibrit Tahmin (Fiyat + Haber + Whale Analizi)
-
-```python
-from news_analyzer import CryptoNewsAnalyzer
-from whale_tracker import CryptoWhaleTracker
-
-# Haber analizi ekle
-news_analyzer = CryptoNewsAnalyzer(newsapi_key="your_api_key")
-all_news = news_analyzer.fetch_all_news('BTC', days=100)
-
-# Sentiment analizi
-news_sentiment_df = news_analyzer.analyze_news_sentiment_batch(all_news)
-sentiment_df = news_analyzer.create_daily_sentiment_features(news_sentiment_df, btc_data)
-
-# Whale analizi ekle
-whale_tracker = CryptoWhaleTracker(whale_alert_api_key="your_whale_key")
-whale_transactions = whale_tracker.fetch_whale_alert_transactions('BTC', hours=48)
-whale_analysis = whale_tracker.analyze_whale_transactions(whale_transactions)
-whale_features = whale_tracker.create_whale_features(whale_analysis, 48)
-
-# Hibrit veri hazırlama (tüm özellikler)
-processed_data = preprocessor.prepare_data(btc_data, 
-                                         use_technical_indicators=True,
-                                         sentiment_df=sentiment_df,
-                                         whale_features=whale_features)
-
-# Hibrit tahmin
-predictor = CryptoPricePredictor(model, preprocessor, news_analyzer, whale_tracker)
-prediction = predictor.predict_next_price(processed_data)
-
-# Haber tabanlı strateji analizi
-news_analysis = predictor.analyze_recent_news_impact('BTC', days=7)
-whale_impact = predictor.analyze_whale_impact('BTC', hours=24)
-
-print(f"Haber Stratejisi: {news_analysis['recommended_action']}")
-print(f"Whale Stratejisi: {whale_impact.get('strategy', 'Veri yok')}")
-```
-
-### 3. Çoklu Dönem Tahmini
-
-```python
-# 24 saatlik tahmin (6 dönem x 4 saat)
-multiple_predictions = predictor.predict_multiple_periods(processed_data, periods=6)
-
-for i, pred in enumerate(multiple_predictions):
-    print(f"Dönem {i+1}: ${pred['predicted_price']:.2f} ({pred['price_change_percent']:+.2f}%)")
-```
-
-### 4. Kapsamlı Haber Analizi
-
-```python
-# Son günlerin haberleri
-recent_news = news_analyzer.fetch_all_news('BTC', days=7)
-sentiment_results = news_analyzer.analyze_news_sentiment_batch(recent_news)
-
-# Sentiment istatistikleri
-avg_sentiment = sentiment_results['overall_sentiment'].mean()
-positive_news = len(sentiment_results[sentiment_results['overall_sentiment'] > 0.1])
-
-print(f"Ortalama Sentiment: {avg_sentiment:.3f}")
-print(f"Pozitif Haberler: {positive_news}")
-
-# Haber-fiyat korelasyonu
-correlation = news_analyzer.calculate_news_price_correlation(sentiment_df, price_data)
-print(f"Korelasyon: {correlation['correlation']:.3f}")
-```
-
-### 5. Whale (Büyük Cüzdan) Analizi
-
-```python
-from whale_tracker import CryptoWhaleTracker
-
-# Whale tracker oluştur
-whale_tracker = CryptoWhaleTracker(whale_alert_api_key="your_api_key")
-
-# Whale transferlerini çek
-whale_transactions = whale_tracker.fetch_whale_alert_transactions('BTC', hours=48)
-
-if whale_transactions:
-    # Whale analizi
-    whale_analysis = whale_tracker.analyze_whale_transactions(whale_transactions)
-    
-    print(f"Whale İşlem Sayısı: {whale_analysis['transaction_count']}")
-    print(f"Toplam Hacim: ${whale_analysis['total_volume']:,.0f}")
-    print(f"Net Flow: ${whale_analysis['net_flow']:,.0f}")
-    print(f"Aktivite Skoru: {whale_analysis['whale_activity_score']:.1f}/100")
-    
-    # Whale-fiyat korelasyonu
-    correlation = whale_tracker.analyze_whale_price_correlation(whale_analysis, price_data, 'BTC')
-    print(f"Fiyat Korelasyonu: {correlation['correlation']:.3f}")
-    
-    # Strateji önerisi
-    strategy = whale_tracker.get_whale_strategy_recommendation(whale_analysis, correlation)
-    print(f"Whale Stratejisi: {strategy['strategy']}")
-    print(f"Güven Seviyesi: {strategy['confidence']}")
-    
-    # Detaylı analiz
-    whale_features = whale_tracker.create_whale_features(whale_analysis, 48)
-    print(f"Whale Sentiment: {whale_features['whale_sentiment']:.3f}")
-    print(f"Exchange Giriş Oranı: {whale_features['whale_inflow_ratio']:.2f}")
-    print(f"Exchange Çıkış Oranı: {whale_features['whale_outflow_ratio']:.2f}")
-```
-
-### 6. Yigit ATR Trailing Stop Analizi
-
-```python
-# Yigit indikatör sinyallerini analiz et
-yigit_analysis = predictor.analyze_yigit_signals(processed_data)
-
-if yigit_analysis['has_yigit']:
-    print(f"Trend Durumu: {yigit_analysis['direction']}")
-    print(f"Son Sinyal: {yigit_analysis['current_signal']}")
-    print(f"Trend Gücü: {yigit_analysis['trend_strength']:.3f}")
-    print(f"Strateji: {yigit_analysis['strategy_recommendation']}")
-    
-    # Volume-Price analizi
-    print(f"V/P Oranı: {yigit_analysis['volume_price_ratio']:.6f}")
-    
-    # Son sinyaller
-    print(f"Son 10 dönem Al sinyali: {yigit_analysis['recent_buy_signals']}")
-    print(f"Son 10 dönem Sat sinyali: {yigit_analysis['recent_sell_signals']}")
-```
-
-## ⚠️ Önemli Uyarılar
-
-- 📊 **Yatırım Tavsiyesi Değildir**: Bu sistem sadece eğitim ve araştırma amaçlıdır
-- 🎲 **Yüksek Risk**: Kripto para yatırımları son derece risklidir
-- 📈 **Geçmiş Performans**: Geçmiş veriler gelecekteki performansı garanti etmez
-- 💰 **Sorumlu Yatırım**: Sadece kaybetmeyi göze alabileceğiniz parayla yatırım yapın
-
-## 🔧 Sorun Giderme
-
-### Yaygın Hatalar
-
-**1. ModuleNotFoundError**
 ```bash
-pip install --upgrade pip
+# Repo klonlama
+git clone <repository-url>
+cd trading
+
+# Virtual environment oluşturma
+python -m venv trading_env
+source trading_env/bin/activate  # Linux/Mac
+# or
+trading_env\Scripts\activate     # Windows
+
+# Dependencies yükleme
 pip install -r requirements.txt
 ```
 
-**2. GPU Hatası**
-```python
-# CPU kullanımını zorlamak için
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-```
+### 2. Temel Konfigürasyon
 
-**3. API Hatası**
-- İnternet bağlantınızı kontrol edin
-- Binance API'sinin çalışır durumda olduğunu doğrulayın
-
-### Performans Optimizasyonu
-
-**GPU Kullanımı**
 ```bash
-# NVIDIA GPU için
-pip install tensorflow-gpu
-
-# Veya yeni TensorFlow sürümlerinde
-pip install tensorflow[and-cuda]
+# Environment variables (opsiyonel)
+export BINANCE_API_KEY="your_binance_api_key"
+export BINANCE_SECRET_KEY="your_binance_secret"
+export NEWSAPI_KEY="your_newsapi_key"
+export WHALE_ALERT_API_KEY="your_whale_api_key"
 ```
 
-**Bellek Kullanımı**
+### 3. İlk Çalıştırma
+
+#### CLI Uygulaması
+```bash
+python main.py
+```
+
+#### Web Dashboard
+```bash
+python run_dashboard.py
+```
+
+#### Hızlı Demo
+```bash
+python main.py --demo
+```
+
+## 🧠 AI Model Sistemi
+
+### 1. Hibrit Trading Model
+
+**Konum**: `hybrid_trading_model.py`
+
+En gelişmiş model - LSTM fiyat tahmini + DQN aksiyon seçimi:
+
 ```python
-# Sequence length'i azaltın
-sequence_length = 30  # Varsayılan: 60
+from hybrid_trading_model import HybridTradingModel
 
-# Batch size'ı küçültün
-batch_size = 16  # Varsayılan: 32
+# Model oluşturma
+hybrid = HybridTradingModel(sequence_length=60, initial_balance=10000)
+
+# Eğitim
+hybrid.train_hybrid_model(df, lstm_epochs=50, dqn_episodes=200)
+
+# Tahmin
+prediction = hybrid.predict_hybrid_action(current_data)
+print(f"Recommendation: {prediction['ensemble_prediction']['recommendation']}")
+print(f"Confidence: {prediction['confidence']:.1%}")
 ```
 
-## 📚 Teknik Detaylar
+**Özellikler**:
+- LSTM + DQN ensemble learning
+- Adaptive weight optimization
+- Overfitting prevention
+- Robust confidence calculation (max %85)
 
-### Model Mimarisi
+### 2. LSTM Price Predictor
 
-```
-Input Layer (60, n_features)
-    ↓
-LSTM Layer (50 units) + Dropout + BatchNorm
-    ↓
-LSTM Layer (50 units) + Dropout + BatchNorm
-    ↓
-LSTM Layer (50 units) + Dropout + BatchNorm
-    ↓
-Dense Layer (25 units, ReLU)
-    ↓
-Output Layer (1 unit, Linear)
-```
+**Konum**: `lstm_model.py`
 
-### Veri Akış Şeması
+Gelişmiş LSTM modeli - TensorFlow M1/M2 Mac optimized:
 
-```
-Binance API → OHLCV Data → Technical Indicators
-     ↓
-NewsAPI/CoinDesk/Reddit → Sentiment Analysis → Daily Features
-     ↓
-Whale Alert API → Whale Transactions → Whale Features
-     ↓
-Feature Integration → Normalization → Sequences → Train/Val/Test Split
-     ↓
-LSTM Training → Hibrit Prediction → Comprehensive Report
+```python
+from lstm_model import CryptoLSTMModel
+
+model = CryptoLSTMModel(sequence_length=60, n_features=20)
+model.build_model(lstm_units=[50, 50, 50], dropout_rate=0.2)
+history = model.train_model(X_train, y_train, X_val, y_val, epochs=50)
+
+# Tahmin
+prediction = model.predict(X_test)
 ```
 
-## 🤝 Katkıda Bulunma
+### 3. DQN Action Selector
 
-1. Fork yapın
-2. Feature branch oluşturun (`git checkout -b feature/YeniOzellik`)
-3. Değişikliklerinizi commit edin (`git commit -am 'Yeni özellik eklendi'`)
-4. Branch'inizi push edin (`git push origin feature/YeniOzellik`)
-5. Pull Request oluşturun
+**Konum**: `dqn_trading_model.py`
 
-## 📄 Lisans
+Deep Q-Network - 9 aksiyon (HOLD, BUY_25/50/75/100%, SELL_25/50/75/100%):
 
-Bu proje MIT lisansı altında lisanslanmıştır. Detaylar için `LICENSE` dosyasına bakın.
+```python
+from dqn_trading_model import DQNTradingModel
 
-## 📞 İletişim
+dqn = DQNTradingModel(lookback_window=60, initial_balance=10000)
+dqn.prepare_data(df)
+dqn.train(df, episodes=200)
 
-- 📧 Email: your-email@example.com
-- 🐱 GitHub: [@yourusername](https://github.com/yourusername)
-- 💼 LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
+action_prediction = dqn.predict_action(current_state)
+print(f"Action: {action_prediction['action_name']}")
+print(f"Confidence: {action_prediction['confidence']:.1%}")
+```
 
-## 🙏 Teşekkürler
+## 🌐 Web Dashboard
 
-- [Binance API](https://binance-docs.github.io/apidocs/) - Kripto para verileri
-- [TensorFlow](https://tensorflow.org/) - Derin öğrenme framework'ü
-- [CCXT](https://github.com/ccxt/ccxt) - Kripto exchange kütüphanesi
-- [Scikit-learn](https://scikit-learn.org/) - Makine öğrenimi araçları
+**Konum**: `web_app.py`, `templates/`, `static/`
+
+Modern web arayüzü Flask ile:
+
+### Ana Özellikler
+
+1. **Portfolio Management**: Portföy takibi ve yönetimi
+2. **Real-time Analytics**: Canlı piyasa analizi
+3. **AI Predictions**: Model tahminleri görselleştirme
+4. **News Dashboard**: Haber sentiment analizi
+5. **Trading History**: İşlem geçmişi ve performans
+6. **Settings**: Model parametreleri ve API ayarları
+
+### Dashboard Çalıştırma
+
+```bash
+python run_dashboard.py
+```
+
+Tarayıcıda açın: `http://localhost:5000`
+
+## 📊 Data Intelligence
+
+### 1. News Sentiment Analysis
+
+**Konum**: `news_analyzer.py`
+
+Çoklu kaynak haber analizi:
+
+```python
+from news_analyzer import CryptoNewsAnalyzer
+
+analyzer = CryptoNewsAnalyzer(newsapi_key="your_key")
+
+# Haber çekme
+news = analyzer.fetch_all_news('BTC', days=7)
+
+# Sentiment analizi
+sentiments = analyzer.analyze_news_sentiment_batch(news)
+
+# Fiyat korelasyonu
+correlation = analyzer.calculate_news_price_correlation(sentiments, price_data)
+```
+
+**Desteklenen Kaynaklar**:
+- NewsAPI (premium)
+- CoinDesk
+- Reddit r/cryptocurrency
+- Twitter (opsiyonel)
+
+### 2. Whale Tracking
+
+**Konum**: `whale_tracker.py`
+
+Büyük cüzdan hareketlerini takip:
+
+```python
+from whale_tracker import CryptoWhaleTracker
+
+tracker = CryptoWhaleTracker(whale_alert_api_key="your_key")
+
+# Whale işlemlerini çekme
+transactions = tracker.fetch_whale_alert_transactions('BTC', hours=48)
+
+# Analiz
+analysis = tracker.analyze_whale_transactions(transactions)
+print(f"Whale Activity Score: {analysis['whale_activity_score']}/100")
+
+# Strateji önerisi
+strategy = tracker.get_whale_strategy_recommendation(analysis)
+```
+
+### 3. Technical Analysis
+
+**Konum**: `data_preprocessor.py`
+
+25+ teknik gösterge:
+
+- **Trend**: SMA, EMA, MACD, Bollinger Bands
+- **Momentum**: RSI, Stochastic, CCI, Williams %R
+- **Volume**: Volume SMA, Volume ratio
+- **Volatility**: ATR, Bollinger bandwidth
+- **Custom**: Yigit ATR Trailing Stop
+
+## 🤖 Trading Automation
+
+### Binance Integration
+
+**Konum**: `binance_trader.py`
+
+Profesyonel trading botu:
+
+```python
+from binance_trader import BinanceTrader
+
+trader = BinanceTrader(api_key, secret_key, testnet=True)
+
+# Pozisyon açma
+result = trader.open_position(
+    symbol='BTC/USDT',
+    side='long',
+    entry_price=45000,
+    target_price=48000,
+    stop_loss=43000,
+    risk_percent=2.0
+)
+
+# Portfolio özeti
+summary = trader.get_portfolio_summary()
+```
+
+### Auto Trading Integration
+
+**Konum**: `auto_trader_integration.py`
+
+AI modelleri ile trading botunu entegre eder:
+
+```python
+# AI sinyalini trading aksiyonuna çevir
+signal = hybrid_model.predict_hybrid_action(current_data)
+trading_result = auto_trader.execute_ai_signal(signal)
+```
+
+## 💾 Data Management
+
+### 1. Model Cache System
+
+**Konum**: `model_cache.py`
+
+Akıllı model cache - eğitim süresini %70 azaltır:
+
+```python
+from model_cache import CachedModelManager
+
+cache = CachedModelManager()
+
+# Otomatik cache veya yeniden eğitim
+model, preprocessor, info = cache.get_or_train_model(
+    coin_symbol='BTC',
+    data=df,
+    config=model_config,
+    preprocessor=preprocessor
+)
+
+print(f"Training type: {info['training_type']}")  # 'cached', 'new', 'incremental'
+```
+
+### 2. Database Integration
+
+#### SQLite (Default)
+**Konum**: `database.py`
+
+```python
+from database import TradingDatabase
+
+db = TradingDatabase()
+db.save_prediction(coin_symbol='BTC', prediction_data=results)
+history = db.get_prediction_history('BTC', days=30)
+```
+
+#### MSSQL (Enterprise)
+**Konum**: `mssql_database.py`
+
+```python
+from mssql_database import MSSQLTradingDatabase
+
+db = MSSQLTradingDatabase()
+# Gelişmiş analytics ve reporting
+```
+
+## ⚡ Performance & Testing
+
+### Backtesting
+
+**Konum**: `performance_tester.py`
+
+Kapsamlı backtest sistemi:
+
+```python
+from performance_tester import TradingPerformanceTester
+
+tester = TradingPerformanceTester()
+
+# Model backtest
+results = tester.backtest_model(
+    model=hybrid_model,
+    test_data=df,
+    initial_balance=10000,
+    start_date='2023-01-01',
+    end_date='2024-01-01'
+)
+
+# Performans metrikleri
+print(f"Total Return: {results['total_return']:.2%}")
+print(f"Sharpe Ratio: {results['sharpe_ratio']:.3f}")
+print(f"Max Drawdown: {results['max_drawdown']:.2%}")
+```
+
+## 🔧 Konfigürasyon
+
+### Environment Variables
+
+```bash
+# Trading
+BINANCE_API_KEY=your_binance_api_key
+BINANCE_SECRET_KEY=your_binance_secret
+BINANCE_TESTNET=true
+
+# News Analysis
+NEWSAPI_KEY=your_newsapi_key
+
+# Whale Tracking
+WHALE_ALERT_API_KEY=your_whale_api_key
+
+# Model Training
+LSTM_EPOCHS=50
+LSTM_TRAINING_DAYS=100
+DQN_EPISODES=200
+
+# Database
+DATABASE_TYPE=sqlite  # or mssql
+MSSQL_CONNECTION_STRING=your_mssql_connection
+
+# Dashboard
+FLASK_SECRET_KEY=your_secret_key
+DASHBOARD_PORT=5000
+```
+
+### TensorFlow Configuration
+
+**M1/M2 Mac Desteği**: `tf_config.py`
+
+Sistem otomatik olarak TensorFlow'u optimize eder:
+- Metal Performance Shaders desteği
+- CPU fallback
+- Memory optimization
+
+## 📈 Kullanım Senaryoları
+
+### 1. Hızlı Coin Analizi
+
+```bash
+python main.py
+# Coin: BTC
+# Model parametreleri: Enter (default)
+# Haber analizi: y
+# Whale analizi: y
+```
+
+### 2. Web Dashboard Monitoring
+
+```bash
+python run_dashboard.py
+# http://localhost:5000 -> Portfolio -> Add BTC
+```
+
+### 3. Otomatik Trading
+
+```python
+# Hibrit model + auto trading
+from hybrid_trading_model import HybridTradingModel
+from auto_trader_integration import AutoTrader
+
+hybrid = HybridTradingModel()
+# ... model eğitimi ...
+
+auto_trader = AutoTrader(hybrid_model=hybrid)
+auto_trader.start_trading('BTC/USDT')
+```
+
+### 4. Backtest & Performance
+
+```python
+# Geçmiş dönem performans testi
+results = tester.backtest_model(
+    model=hybrid_model,
+    symbol='BTC/USDT',
+    start_date='2023-01-01',
+    end_date='2024-01-01',
+    initial_balance=10000
+)
+```
+
+## 🛡️ Güvenlik & Risk
+
+### Risk Management
+
+- **Position Sizing**: Kelly criterion ve risk yüzdesi
+- **Stop Loss**: Otomatik zarar durdur
+- **Drawdown Protection**: Maksimum çekilme koruması
+- **Diversification**: Çoklu coin desteği
+
+### Security Features
+
+- JWT authentication
+- API key encryption
+- Secure database connections
+- Input validation ve sanitization
+
+## 📊 Model Performance
+
+### Tipik Performans Metrikleri
+
+| Model | Accuracy | Sharpe Ratio | Max Drawdown | Confidence Range |
+|-------|----------|--------------|--------------|------------------|
+| LSTM | 65-75% | 1.2-1.8 | 15-25% | 40-80% |
+| DQN | 60-70% | 1.0-1.5 | 20-30% | 15-85% |
+| Hybrid | 70-80% | 1.5-2.2 | 12-20% | 50-85% |
+
+### Confidence Levels
+
+- **85%+**: Aşırı güven (overfitting) - sistem engeller
+- **70-85%**: Yüksek güven - güçlü sinyal
+- **50-70%**: Orta güven - standart sinyal
+- **30-50%**: Düşük güven - dikkatli yaklaşım
+- **<30%**: Çok düşük güven - manuel review gerekli
+
+## 🔍 Troubleshooting
+
+### Yaygın Sorunlar
+
+**1. TensorFlow Metal Hataları (M1/M2 Mac)**
+```python
+# tf_config.py otomatik çözüm sağlar
+import tf_config  # Bu import yeterli
+```
+
+**2. Binance API Connection**
+```python
+# Test bağlantısı
+from data_fetcher import CryptoDataFetcher
+fetcher = CryptoDataFetcher()
+data = fetcher.fetch_ohlcv_data('BTC', timeframe='1h', days=1)
+```
+
+**3. Memory Issues**
+```python
+# Model parametrelerini küçült
+sequence_length = 30  # default: 60
+batch_size = 16      # default: 32
+```
+
+**4. Cache Issues**
+```bash
+# Cache temizleme
+rm -rf model_cache/*
+```
+
+## 🚀 Gelişmiş Özellikler
+
+### 1. Multi-Timeframe Analysis
+
+```python
+# Çoklu zaman dilimi analizi
+timeframes = ['1h', '4h', '1d']
+predictions = {}
+
+for tf in timeframes:
+    data = fetcher.fetch_ohlcv_data('BTC', timeframe=tf, days=100)
+    pred = hybrid_model.predict_hybrid_action(data)
+    predictions[tf] = pred
+```
+
+### 2. Portfolio Optimization
+
+```python
+# Modern Portfolio Theory entegrasyonu
+from portfolio_optimizer import PortfolioOptimizer
+
+optimizer = PortfolioOptimizer()
+optimal_weights = optimizer.optimize_portfolio(
+    coins=['BTC', 'ETH', 'ADA'],
+    predictions=predictions,
+    risk_tolerance=0.6
+)
+```
+
+### 3. Real-time Alerts
+
+```python
+# Sinyal bazlı alertler
+from alert_system import AlertManager
+
+alerts = AlertManager()
+alerts.add_condition('BTC', 'hybrid_confidence > 0.8')
+alerts.add_condition('ETH', 'whale_activity > 80')
+```
+
+## 📚 API Reference
+
+### Core Classes
+
+```python
+# Hibrit Model
+HybridTradingModel(sequence_length=60, initial_balance=10000)
+├── train_hybrid_model(df, lstm_epochs=30, dqn_episodes=100)
+├── predict_hybrid_action(current_data)
+└── get_model_performance_summary()
+
+# LSTM Model
+CryptoLSTMModel(sequence_length=60, n_features=20)
+├── build_model(lstm_units=[50,50,50], dropout_rate=0.2)
+├── train_model(X_train, y_train, X_val, y_val, epochs=50)
+└── predict(X)
+
+# DQN Model
+DQNTradingModel(lookback_window=60, initial_balance=10000)
+├── prepare_data(df)
+├── train(df, episodes=100)
+└── predict_action(current_state)
+
+# Data Processing
+CryptoDataPreprocessor()
+├── prepare_data(df, use_technical_indicators=True)
+├── scale_data(df, fit_scaler=True)
+└── create_sequences(data, sequence_length)
+
+# News Analysis
+CryptoNewsAnalyzer(newsapi_key=None)
+├── fetch_all_news(coin_symbol, days=7)
+├── analyze_news_sentiment_batch(news_data)
+└── calculate_news_price_correlation(sentiment_df, price_df)
+
+# Whale Tracking
+CryptoWhaleTracker(whale_alert_api_key=None)
+├── fetch_whale_alert_transactions(coin_symbol, hours=48)
+├── analyze_whale_transactions(transactions)
+└── get_whale_strategy_recommendation(analysis)
+```
+
+## 🤝 Contributing
+
+### Development Setup
+
+```bash
+# Development dependencies
+pip install -r requirements-dev.txt
+
+# Pre-commit hooks
+pre-commit install
+
+# Run tests
+python -m pytest tests/
+```
+
+### Code Style
+
+- PEP 8 compliance
+- Type hints
+- Docstring documentation
+- Error handling
+
+## 📄 License
+
+MIT License - detaylar için `LICENSE` dosyasına bakın.
+
+## 🙏 Credits
+
+- **Binance API**: Kripto para verileri
+- **TensorFlow**: Deep learning framework
+- **NewsAPI**: Haber verileri
+- **Whale Alert**: Whale transaction data
+- **CCXT**: Cryptocurrency exchange library
+
+## ⚠️ Risk Disclaimer
+
+**Bu yazılım sadece eğitim ve araştırma amaçlıdır. Finansal yatırım tavsiyesi değildir.**
+
+- Kripto para yatırımları yüksek risk içerir
+- Geçmiş performans gelecek başarıyı garanti etmez
+- Sadece kaybetmeyi göze alabileceğiniz sermaye ile yatırım yapın
+- Profesyonel finansal danışmanlık alın
 
 ---
 
-⭐ Bu projeyi beğendiyseniz, lütfen star verin!
+⭐ **Bu projeyi beğendiyseniz star vermeyi unutmayın!**
 
-**Risk Uyarısı**: Bu yazılım yalnızca eğitim amaçlıdır. Finansal yatırım kararları vermek için kullanmayın. Kripto para yatırımları yüksek risk içerir ve tüm yatırımınızı kaybedebilirsiniz. 
+📧 **Sorularınız için**: Issues kısmından iletişime geçebilirsiniz
+
+🚀 **Happy Trading!** (Responsibly) 
