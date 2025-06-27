@@ -51,3 +51,6 @@ tensorboard==2.13.0
 
 # Advanced Trading Algorithms
 quantlib==1.31
+
+# Scheduler for weekly fine-tuning
+schedule==1.2.0

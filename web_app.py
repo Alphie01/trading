@@ -77,6 +77,21 @@ analysis_queue = queue.Queue()
 active_analyses = {}
 monitoring_active = False
 
+# Training scheduler'ı initialize et
+try:
+    from training_scheduler import init_scheduler
+    training_scheduler = init_scheduler(
+        schedule_day=os.getenv('TRAINING_SCHEDULE_DAY', 'sunday'),
+        schedule_time=os.getenv('TRAINING_SCHEDULE_TIME', '02:00'),
+        enable_notifications=True
+    )
+    # Scheduler'ı başlat
+    training_scheduler.start_scheduler()
+    print("✅ Training Scheduler başlatıldı ve aktif!")
+except Exception as scheduler_init_error:
+    print(f"⚠️ Training Scheduler başlatma hatası: {scheduler_init_error}")
+    training_scheduler = None
+
 # Authentication setup
 auth_manager = AuthManager(db)
 login_manager = setup_login_manager(app, auth_manager)
@@ -985,11 +1000,12 @@ def dashboard():
 @app.route('/add_coin', methods=['POST'])
 @login_required
 def add_coin():
-    """Coin ekleme ve otomatik analiz"""
+    """Coin ekleme ve comprehensive training başlatma"""
     try:
         symbol = request.form.get('symbol', '').upper()
         name = request.form.get('name', '')
         auto_analyze = request.form.get('auto_analyze', 'true').lower() == 'true'
+        comprehensive_training = request.form.get('comprehensive_training', 'true').lower() == 'true'
         
         if not symbol:
             flash('Coin sembolü gerekli!', 'error')
@@ -1006,17 +1022,126 @@ def add_coin():
         if success:
             flash(f'{symbol} izleme listesine eklendi!', 'success')
             
-            # Otomatik analiz yap (eğer isteniyorsa)
-            if auto_analyze:
+            # Scheduler'a ekle
+            try:
+                from training_scheduler import get_scheduler
+                scheduler = get_scheduler()
+                scheduler.add_coin_to_schedule(symbol)
+                flash(f'📅 {symbol} haftalık training schedule\'a eklendi!', 'info')
+            except Exception as scheduler_error:
+                logger.warning(f"Scheduler ekleme hatası: {scheduler_error}")
+            
+            # Comprehensive training yap (eğer isteniyorsa)
+            if comprehensive_training:
                 try:
-                    flash(f'🔍 {symbol} için analiz başlatılıyor...', 'info')
+                    flash(f'🚀 {symbol} için comprehensive training başlatılıyor...', 'info')
                     
-                    # Background'da analiz yap
+                    def background_comprehensive_training():
+                        try:
+                            from comprehensive_trainer import ComprehensiveTrainer
+                            trainer = ComprehensiveTrainer()
+                            
+                            logger.info(f"🔥 {symbol} comprehensive training başlıyor...")
+                            result = trainer.train_coin_sync(symbol, is_fine_tune=False)
+                            
+                            if result['success']:
+                                successful_models = result.get('successful_models', [])
+                                failed_models = result.get('failed_models', [])
+                                predictions = result.get('predictions', {})
+                                
+                                # WebSocket ile sonucu gönder
+                                socketio.emit('comprehensive_training_complete', {
+                                    'coin': symbol,
+                                    'success': True,
+                                    'successful_models': successful_models,
+                                    'failed_models': failed_models,
+                                    'predictions_4h': len(predictions.get('4h', {})),
+                                    'predictions_1d': len(predictions.get('1d', {})),
+                                    'message': f'{symbol} comprehensive training tamamlandı! '
+                                             f'Başarılı modeller: {len(successful_models)}/{len(successful_models + failed_models)}',
+                                    'timestamp': datetime.now().isoformat()
+                                })
+                                
+                                logger.info(f"✅ {symbol} comprehensive training tamamlandı")
+                                
+                                # Ana tahmin sonucu varsa, normal analiz sonucu gibi de gönder
+                                if 'LSTM' in predictions.get('4h', {}):
+                                    lstm_prediction = predictions['4h']['LSTM']
+                                    socketio.emit('analysis_complete', {
+                                        'coin': symbol,
+                                        'result': {
+                                            'success': True,
+                                            'prediction': lstm_prediction,
+                                            'model_type': 'Comprehensive_Training',
+                                            'comprehensive_results': result
+                                        },
+                                        'message': f'{symbol} comprehensive training tamamlandı! '
+                                                 f'4h Tahmin: ${lstm_prediction.get("predicted_price", 0):.4f}',
+                                        'timestamp': datetime.now().isoformat()
+                                    })
+                            else:
+                                error_msg = result.get('error', 'Bilinmeyen hata')
+                                socketio.emit('comprehensive_training_error', {
+                                    'coin': symbol,
+                                    'error': error_msg,
+                                    'timestamp': datetime.now().isoformat()
+                                })
+                                logger.error(f"❌ {symbol} comprehensive training başarısız: {error_msg}")
+                                
+                        except Exception as training_error:
+                            error_msg = str(training_error)
+                            socketio.emit('comprehensive_training_error', {
+                                'coin': symbol,
+                                'error': error_msg,
+                                'timestamp': datetime.now().isoformat()
+                            })
+                            logger.error(f"❌ {symbol} comprehensive training exception: {error_msg}")
+                    
+                    # Thread'de başlat
+                    training_thread = threading.Thread(target=background_comprehensive_training, daemon=True)
+                    training_thread.start()
+                    
+                    flash(f'🧠 {symbol} için COMPREHENSIVE TRAINING (LSTM+DQN+Hybrid) arka planda başlatıldı!', 'success')
+                    flash(f'📊 4 saatlik ve 1 günlük tahminler oluşturulacak!', 'info')
+                    
+                except Exception as training_error:
+                    flash(f'Comprehensive training hatası: {str(training_error)}', 'warning')
+                    
+                    # Fallback: Normal analiz yap
+                    if auto_analyze:
+                        try:
+                            def background_analysis():
+                                result = coin_monitor.analyze_coin(symbol)
+                                if result['success']:
+                                    socketio.emit('analysis_complete', {
+                                        'coin': symbol,
+                                        'result': result,
+                                        'message': f'{symbol} analizi tamamlandı! Tahmin: ${result["prediction"]["predicted_price"]:.4f}',
+                                        'timestamp': datetime.now().isoformat()
+                                    })
+                                else:
+                                    socketio.emit('analysis_error', {
+                                        'coin': symbol,
+                                        'error': result.get('error', 'Bilinmeyen hata'),
+                                        'timestamp': datetime.now().isoformat()
+                                    })
+                            
+                            analysis_thread = threading.Thread(target=background_analysis, daemon=True)
+                            analysis_thread.start()
+                            flash(f'🔄 Fallback: {symbol} için normal LSTM analizi başlatıldı', 'info')
+                            
+                        except Exception as fallback_error:
+                            flash(f'Fallback analiz hatası: {str(fallback_error)}', 'warning')
+            
+            elif auto_analyze:
+                # Sadece normal analiz yap
+                try:
+                    flash(f'🔍 {symbol} için normal analiz başlatılıyor...', 'info')
+                    
                     def background_analysis():
                         result = coin_monitor.analyze_coin(symbol)
                         if result['success']:
                             logger.info(f"✅ {symbol} otomatik analizi tamamlandı")
-                            # WebSocket ile sonucu gönder
                             socketio.emit('analysis_complete', {
                                 'coin': symbol,
                                 'result': result,
@@ -1031,7 +1156,6 @@ def add_coin():
                                 'timestamp': datetime.now().isoformat()
                             })
                     
-                    # Thread'de başlat
                     analysis_thread = threading.Thread(target=background_analysis, daemon=True)
                     analysis_thread.start()
                     
@@ -2079,6 +2203,116 @@ def api_trading_status():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/scheduler_status')
+@login_required
+def api_scheduler_status():
+    """Training Scheduler durumu API'si"""
+    try:
+        global training_scheduler
+        
+        if training_scheduler is None:
+            return jsonify({
+                'success': False,
+                'error': 'Training scheduler mevcut değil'
+            })
+        
+        status = training_scheduler.get_scheduler_status()
+        
+        return jsonify({
+            'success': True,
+            'scheduler_status': status
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/scheduler_control', methods=['POST'])
+@login_required  
+def api_scheduler_control():
+    """Training Scheduler kontrol API'si"""
+    try:
+        global training_scheduler
+        
+        if training_scheduler is None:
+            return jsonify({
+                'success': False,
+                'error': 'Training scheduler mevcut değil'
+            })
+        
+        action = request.json.get('action')
+        coin_symbol = request.json.get('coin_symbol')
+        
+        if action == 'start':
+            training_scheduler.start_scheduler()
+            return jsonify({
+                'success': True,
+                'message': 'Training scheduler başlatıldı'
+            })
+            
+        elif action == 'stop':
+            training_scheduler.stop_scheduler()
+            return jsonify({
+                'success': True,
+                'message': 'Training scheduler durduruldu'
+            })
+            
+        elif action == 'force_run':
+            if coin_symbol:
+                # Tek coin için manual training
+                result = training_scheduler.force_run_training(coin_symbol.upper())
+                return jsonify({
+                    'success': True,
+                    'message': f'{coin_symbol} için manual training başlatıldı',
+                    'training_result': result
+                })
+            else:
+                # Tüm coinler için manual training
+                training_scheduler.force_run_training()
+                return jsonify({
+                    'success': True,
+                    'message': 'Tüm coinler için manual training başlatıldı'
+                })
+                
+        elif action == 'add_coin':
+            if coin_symbol:
+                training_scheduler.add_coin_to_schedule(coin_symbol.upper())
+                return jsonify({
+                    'success': True,
+                    'message': f'{coin_symbol} scheduler\'a eklendi'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Coin sembolü gerekli'
+                })
+                
+        elif action == 'remove_coin':
+            if coin_symbol:
+                training_scheduler.remove_coin_from_schedule(coin_symbol.upper())
+                return jsonify({
+                    'success': True,
+                    'message': f'{coin_symbol} scheduler\'dan çıkarıldı'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Coin sembolü gerekli'
+                })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Geçersiz action'
+            })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 # WebSocket Events
 @socketio.on('connect')
