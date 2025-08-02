@@ -74,7 +74,7 @@ class CryptoDataFetcher:
         while len(all_ohlcv) < total_candles_needed:
             try:
                 ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since, limit=limit)
-
+                print(ohlcv[1])
                 if not ohlcv:
                     print("Veri alınamadı, devam ediliyor...")
                     break  # Hiç veri gelmezse çık
