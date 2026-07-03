@@ -1,0 +1,31 @@
+[project]
+name = "trading-db"
+version = "0.1.0"
+description = "Crypto Trading platformu için paylaşılan veri katmanı (PostgreSQL + SQLAlchemy + Alembic, schema-per-tenant multi-tenancy)"
+requires-python = ">=3.11"
+dependencies = [
+    "SQLAlchemy>=2.0.25",
+    "alembic>=1.13.0",
+    "psycopg[binary]>=3.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+trading-db-provision = "trading_db.provisioning:_cli"
+trading-db-seed = "trading_db.seed_shared:_cli"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["trading_db"]
+
+[tool.setuptools.package-data]
+trading_db = [
+    "alembic.ini",
+    "alembic/env.py",
+    "alembic/script.py.mako",
+    "alembic/versions_shared/*.py",
+    "alembic/versions_tenant/*.py",
+]

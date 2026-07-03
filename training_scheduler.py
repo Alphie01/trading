@@ -19,7 +19,7 @@ import logging
 from comprehensive_trainer import ComprehensiveTrainer
 
 try:
-    from database import TradingDatabase
+    from trading_db import TradingDatabase
     DATABASE_AVAILABLE = True
 except ImportError:
     DATABASE_AVAILABLE = False

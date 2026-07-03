@@ -31,8 +31,11 @@ python-dotenv==1.0.0
 # Crypto Trading and Data
 ccxt==4.1.77
 
-# MSSQL Database Integration (Mac Compatible)
-pyodbc==4.0.39
+# Database: PostgreSQL + SQLAlchemy + Alembic
+# (Ayrıca `pip install -e packages/database` ile paylaşılan trading_db paketini kurun)
+SQLAlchemy>=2.0.25
+alembic>=1.13.0
+psycopg[binary]>=3.1.0
 
 # Model Cache System
 # (pickle, hashlib, json, os, datetime are built-in Python modules)

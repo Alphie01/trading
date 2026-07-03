@@ -1,0 +1,45 @@
+{
+  "model_id": "ETH_17b05783",
+  "symbol": "ETH",
+  "config": {
+    "sequence_length": 60,
+    "lstm_units": [
+      50,
+      50,
+      50
+    ],
+    "dropout_rate": 0.2,
+    "learning_rate": 0.001,
+    "epochs": 100,
+    "batch_size": 32,
+    "use_technical_indicators": true,
+    "use_news_analysis": true,
+    "use_whale_analysis": false,
+    "training_days": 200,
+    "news_days": 14
+  },
+  "training_data_info": {
+    "data_shape": [
+      1176,
+      26
+    ],
+    "feature_count": 26,
+    "training_samples": 780,
+    "data_hash": "e2b496ebe595432b"
+  },
+  "performance_metrics": {
+    "test_loss": 0.004062405787408352,
+    "mse": 0.004062405791657295,
+    "rmse": 0.06373700488458252,
+    "mae": 0.05487506213163049,
+    "mape": 12.494929491572927,
+    "directional_accuracy": 0.5246636771300448,
+    "manual_dir_accuracy": 0.5246636771300448
+  },
+  "created_at": "2025-06-26T20:38:40.863063",
+  "last_trained": "2025-06-26T20:38:40.863091",
+  "training_count": 1,
+  "feature_count": 26,
+  "data_hash": "e2b496ebe595432b",
+  "version": "1.0"
+}

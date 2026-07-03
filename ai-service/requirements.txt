@@ -1,0 +1,56 @@
+# AI Service Requirements
+# Core ML and Data Analysis - Python 3.13 Compatible Versions
+pandas>=2.2.0
+numpy>=1.26.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+scikit-learn>=1.4.0
+tensorflow>=2.10.1
+python-dateutil>=2.8.2
+requests>=2.31.0
+
+# System Resource Monitoring
+psutil==5.9.6
+
+# AI Service API Framework
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+
+# News Sentiment Analysis - Python 3.13 Compatible
+transformers>=4.40.0
+torch>=2.2.0
+vaderSentiment>=3.3.2
+beautifulsoup4>=4.12.2
+newsapi-python>=0.2.7
+textblob>=0.17.1
+
+# Whale Tracking
+web3==6.11.3
+python-dotenv==1.0.0
+
+# Crypto Trading and Data
+ccxt==4.1.77
+
+# Deep Q-Learning and Reinforcement Learning - Python 3.13 Compatible
+gymnasium>=0.29.0  # gym is deprecated, use gymnasium
+stable-baselines3>=2.2.0
+
+# Enhanced Data Science and Visualization
+plotly>=5.17.0
+
+# Additional TensorFlow Tools  
+tensorboard>=2.16.0
+
+# Advanced Trading Algorithms
+quantlib==1.31
+
+# Scheduler for weekly fine-tuning
+schedule==1.2.0
+
+# HTTP Client for external APIs
+httpx==0.25.2
+aiofiles==23.2.0
+
+# Configuration
+pyyaml==6.0.1

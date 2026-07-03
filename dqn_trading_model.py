@@ -19,7 +19,7 @@ from tf_config import get_tensorflow, is_tensorflow_available, print_training_de
 
 # Optional database integration
 try:
-    from database import TradingDatabase
+    from trading_db import TradingDatabase
     DATABASE_AVAILABLE = True
 except ImportError:
     print("⚠️ Database module not available - DQN predictions will not be saved")

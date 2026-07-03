@@ -49,12 +49,12 @@ def check_environment_setup():
             print("⚙️ Lütfen .env dosyasındaki ayarları düzenleyin!")
         return False
     
-    # MSSQL ayarları kontrolü
-    if os.getenv('MSSQL_SERVER'):
-        print(f"✅ MSSQL Server: {os.getenv('MSSQL_SERVER')}")
+    # PostgreSQL bağlantısı kontrolü
+    if os.getenv('DATABASE_URL'):
+        print("✅ DATABASE_URL tanımlı (PostgreSQL)")
     else:
-        print("⚠️ MSSQL ayarları yapılmamış, SQLite kullanılacak")
-    
+        print("⚠️ DATABASE_URL tanımlı değil — trading_db bağlantısı başarısız olabilir")
+
     return True
 
 def check_requirements():
@@ -62,14 +62,12 @@ def check_requirements():
     print("📦 Gerekli kütüphaneler kontrol ediliyor...")
     
     required_packages = [
-        'flask', 'pandas', 'numpy', 'ccxt', 'tensorflow', 'dotenv'
+        'flask', 'pandas', 'numpy', 'ccxt', 'tensorflow', 'dotenv',
+        'trading_db', 'sqlalchemy'
     ]
-    
-    # MSSQL için isteğe bağlı paketler
-    optional_packages = ['pyodbc', 'pymssql']
-    
+
     missing_packages = []
-    
+
     for package in required_packages:
         try:
             __import__(package)
@@ -77,22 +75,10 @@ def check_requirements():
         except ImportError:
             print(f"❌ {package} - EKSIK!")
             missing_packages.append(package)
-    
-    # MSSQL paketleri kontrol et
-    mssql_available = False
-    for package in optional_packages:
-        try:
-            __import__(package)
-            print(f"✅ {package} (MSSQL için)")
-            mssql_available = True
-            break
-        except ImportError:
-            continue
-    
-    if not mssql_available and os.getenv('MSSQL_SERVER'):
-        print("⚠️ MSSQL kullanmak için pyodbc veya pymssql gerekli")
-        print("📦 Kurulum: pip install pyodbc")
-    
+
+    if 'trading_db' in missing_packages:
+        print("📦 Paylaşılan veri katmanı: pip install -e packages/database")
+
     if missing_packages:
         print(f"\n⚠️ Eksik kütüphaneler bulundu: {', '.join(missing_packages)}")
         print("📦 Kurulum için: pip install -r requirements.txt")

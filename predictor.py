@@ -361,74 +361,84 @@ class CryptoPricePredictor:
                 final_feature_count = scaled_data.shape[1] if len(scaled_data.shape) > 1 else processed_df.shape[1]
                 print(f"🔍 Final feature count for LSTM: {final_feature_count}")
                 
-                # **CRITICAL FIX: Ensure LSTM model is properly built with CORRECT feature count**
+                # **PERF FIX: Önce process-ömürlü / disk cache'ten EĞİTİLMİŞ modeli yükle.**
+                # Eski davranış (bug): retrain dalında model diskten YÜKLENMEDEN eğitilmemiş
+                # model kurulur veya her istekte yeniden eğitilirdi. Artık eğitilmiş .h5
+                # yüklenir → her istekte yeniden eğitim YOK. Scaler mantığına dokunulmaz.
                 if self.model is None:
-                    print("🔄 LSTM model None - initializing model...")
-                    # Try to create LSTM model with CORRECT feature count
+                    try:
+                        import model_memory_cache as _mem
+                        with _mem.lock_for(coin_symbol):
+                            cached_model = _mem.get_or_load_lstm(coin_symbol)
+                            if cached_model is not None and getattr(cached_model, 'model', None) is not None:
+                                self.model = cached_model
+                                print(f"⚡ LSTM cache'ten yüklendi (yeniden eğitim yok): {coin_symbol}")
+                    except Exception as _cache_err:
+                        print(f"⚠️ LSTM cache erişim hatası: {_cache_err}")
+
+                # Cache yoksa (ilk eğitim veya disk yükleme başarısız): kur + eğit + kaydet + belleğe al
+                if self.model is None:
+                    print("🔄 LSTM model None - kurulum + eğitim (cache miss)...")
                     try:
                         from lstm_model import CryptoLSTMModel
                         self.model = CryptoLSTMModel(sequence_length=60, n_features=final_feature_count)
                         print(f"🧠 LSTM Model initialized with {final_feature_count} features (TF Available: {TF_AVAILABLE})")
-                        
+
                         # **CRITICAL: Build model before training**
                         if self.model.model is None:
-                            print("🔄 Building LSTM model...")
                             self.model.build_model()
                             print("✅ LSTM model built successfully")
-                        
-                        # **YENİ: İlk eğitim ise modeli eğit ve kaydet**
-                        if is_first_training:
-                            print(f"🔥 İlk eğitim başlıyor: {lstm_epochs} epoch, batch_size={batch_size}")
-                            
-                            # Create sequences from already prepared data
-                            X, y = self.preprocessor.create_sequences(scaled_data, 60)
-                            if len(X) == 0:
-                                return {
-                                    'success': False,
-                                    'error': 'Insufficient data for sequence creation',
-                                    'current_price': current_price,
-                                    'model': 'LSTM'
-                                }
-                            
-                            X_train, X_val, X_test, y_train, y_val, y_test = self.preprocessor.split_data(X, y)
-                            
-                            print(f"🔍 Training data shape: {X_train.shape}")
-                            print(f"🔍 Expected model input: (None, 60, {final_feature_count})")
-                            
-                            # Verify shapes match
-                            if X_train.shape[2] != final_feature_count:
-                                return {
-                                    'success': False,
-                                    'error': f'Shape mismatch: X_train has {X_train.shape[2]} features but model expects {final_feature_count}',
-                                    'current_price': current_price,
-                                    'model': 'LSTM'
-                                }
-                            
-                            # Train with more epochs for first-time training
-                            training_result = self.model.train_model(
-                                X_train, y_train, X_val, y_val, 
-                                epochs=lstm_epochs, 
-                                batch_size=batch_size,
-                                verbose=1,
-                                use_early_stopping=False  # **YENİ: İlk eğitimde early stopping devre dışı**
-                            )
-                            
-                            if not training_result:
-                                return {
-                                    'success': False,
-                                    'error': 'LSTM training failed',
-                                    'current_price': current_price,
-                                    'model': 'LSTM'
-                                }
-                            
-                            # Save trained model
-                            os.makedirs("model_cache", exist_ok=True)
-                            try:
-                                self.model.save_model(lstm_cache_file)
-                                print(f"✅ İlk eğitim tamamlandı ve kaydedildi: {lstm_cache_file}")
-                            except Exception as save_error:
-                                print(f"⚠️ Model kaydetme hatası: {save_error}")
-                        
+
+                        print(f"🔥 LSTM eğitim: {lstm_epochs} epoch, batch_size={batch_size}")
+                        X, y = self.preprocessor.create_sequences(scaled_data, 60)
+                        if len(X) == 0:
+                            return {
+                                'success': False,
+                                'error': 'Insufficient data for sequence creation',
+                                'current_price': current_price,
+                                'model': 'LSTM'
+                            }
+
+                        X_train, X_val, X_test, y_train, y_val, y_test = self.preprocessor.split_data(X, y)
+
+                        # Verify shapes match
+                        if X_train.shape[2] != final_feature_count:
+                            return {
+                                'success': False,
+                                'error': f'Shape mismatch: X_train has {X_train.shape[2]} features but model expects {final_feature_count}',
+                                'current_price': current_price,
+                                'model': 'LSTM'
+                            }
+
+                        training_result = self.model.train_model(
+                            X_train, y_train, X_val, y_val,
+                            epochs=lstm_epochs,
+                            batch_size=batch_size,
+                            verbose=1,
+                            use_early_stopping=False
+                        )
+
+                        if not training_result:
+                            return {
+                                'success': False,
+                                'error': 'LSTM training failed',
+                                'current_price': current_price,
+                                'model': 'LSTM'
+                            }
+
+                        # Save trained model (disk) + belleğe al
+                        os.makedirs("model_cache", exist_ok=True)
+                        try:
+                            self.model.save_model(lstm_cache_file)
+                            print(f"✅ LSTM eğitildi ve kaydedildi: {lstm_cache_file}")
+                        except Exception as save_error:
+                            print(f"⚠️ Model kaydetme hatası: {save_error}")
+                        try:
+                            import model_memory_cache as _mem
+                            _mem.store_lstm(coin_symbol, self.model)
+                        except Exception:
+                            pass
+
                     except Exception as model_error:
                         print(f"❌ LSTM model creation failed: {model_error}")
                         return {
@@ -438,8 +448,8 @@ class CryptoPricePredictor:
                             'model': 'LSTM'
                         }
                 
-                # Make prediction
-                prediction_result = self.predict_next_price(df, sequence_length=60)
+                # Make prediction (coin_symbol → cache'ten model yükleme desteği)
+                prediction_result = self.predict_next_price(df, sequence_length=60, coin_symbol=coin_symbol)
                 
                 if prediction_result:
                     return {
@@ -492,47 +502,63 @@ class CryptoPricePredictor:
                 # **YENİ: İlk eğitim kontrolü - DQN cache dosyasını kontrol et**
                 dqn_model_file = f"model_cache/dqn_{coin_symbol.lower()}_model.h5"
                 is_first_training = not os.path.exists(dqn_model_file)
-                
-                if is_first_training:
-                    print(f"🆕 {coin_symbol} DQN İLK EĞİTİM - Daha fazla episode kullanılacak")
-                    dqn_episodes = 100  # İlk eğitim için 100 episode (daha uzun)
-                else:
-                    print(f"🔄 {coin_symbol} DQN YENİDEN EĞİTİM - Normal episode kullanılacak")
-                    dqn_episodes = 15   # Normal eğitim için 15 episode
-                
-                if os.path.exists(dqn_model_file) and not is_first_training:
-                    print(f"🔄 Loading DQN model from {dqn_model_file}")
-                    try:
-                        self.dqn_model.load_model(dqn_model_file)
-                    except:
-                        print("❌ Failed to load DQN model, training new one...")
-                        self.dqn_model.prepare_data(df)
-                        training_result = self.dqn_model.train(df, episodes=dqn_episodes, verbose=False)
+
+                # **PERF: DQN'i process-ömürlü bellek cache'ten dene (disk yükleme/eğitim atla)**
+                _dqn_cached = None
+                try:
+                    import model_memory_cache as _mem
+                    _dqn_cached = _mem.get_dqn(coin_symbol)
+                except Exception:
+                    _dqn_cached = None
+
+                if _dqn_cached is not None:
+                    self.dqn_model = _dqn_cached
+                    print(f"⚡ DQN cache'ten (bellek) yüklendi: {coin_symbol}")
                 else:
                     if is_first_training:
-                        print(f"🔥 DQN İlk eğitim başlıyor: {dqn_episodes} episode")
+                        print(f"🆕 {coin_symbol} DQN İLK EĞİTİM - Daha fazla episode kullanılacak")
+                        dqn_episodes = 100  # İlk eğitim için 100 episode (daha uzun)
                     else:
-                        print(f"❌ Could not load DQN model from {dqn_model_file}")
-                        print(f"🔄 Training DQN model for {coin_symbol}...")
-                    
-                    # Prepare and train DQN with appropriate episodes
-                    self.dqn_model.prepare_data(df)
-                    training_result = self.dqn_model.train(df, episodes=dqn_episodes, verbose=False)
-                    
-                    if training_result:
-                        # Save the trained model
-                        os.makedirs("model_cache", exist_ok=True)
+                        print(f"🔄 {coin_symbol} DQN YENİDEN EĞİTİM - Normal episode kullanılacak")
+                        dqn_episodes = 15   # Normal eğitim için 15 episode
+
+                    if os.path.exists(dqn_model_file) and not is_first_training:
+                        print(f"🔄 Loading DQN model from {dqn_model_file}")
                         try:
-                            self.dqn_model.save_model(dqn_model_file)
-                            if is_first_training:
-                                print(f"✅ DQN İlk eğitim tamamlandı ve kaydedildi: {dqn_model_file}")
-                            else:
-                                print(f"✅ DQN model trained and saved to {dqn_model_file}")
+                            self.dqn_model.load_model(dqn_model_file)
                         except:
-                            print("⚠️ Could not save DQN model, continuing...")
+                            print("❌ Failed to load DQN model, training new one...")
+                            self.dqn_model.prepare_data(df)
+                            training_result = self.dqn_model.train(df, episodes=dqn_episodes, verbose=False)
                     else:
-                        print("❌ DQN training failed")
-                        return {'success': False, 'error': 'DQN training failed', 'status': 'failed'}
+                        if is_first_training:
+                            print(f"🔥 DQN İlk eğitim başlıyor: {dqn_episodes} episode")
+                        else:
+                            print(f"❌ Could not load DQN model from {dqn_model_file}")
+                            print(f"🔄 Training DQN model for {coin_symbol}...")
+
+                        # Prepare and train DQN with appropriate episodes
+                        self.dqn_model.prepare_data(df)
+                        training_result = self.dqn_model.train(df, episodes=dqn_episodes, verbose=False)
+
+                        if training_result:
+                            # Save the trained model
+                            os.makedirs("model_cache", exist_ok=True)
+                            try:
+                                self.dqn_model.save_model(dqn_model_file)
+                                print(f"✅ DQN model saved: {dqn_model_file}")
+                            except:
+                                print("⚠️ Could not save DQN model, continuing...")
+                        else:
+                            print("❌ DQN training failed")
+                            return {'success': False, 'error': 'DQN training failed', 'status': 'failed'}
+
+                    # Yüklenen/eğitilen DQN modelini belleğe al (request'ler arası reuse)
+                    try:
+                        import model_memory_cache as _mem
+                        _mem.store_dqn(coin_symbol, self.dqn_model)
+                    except Exception:
+                        pass
                 
                 # Get current state for prediction
                 if len(df) < getattr(self.dqn_model, 'lookback_window', 60):
@@ -936,43 +962,64 @@ class CryptoPricePredictor:
         
         return comparison
     
-    def predict_next_price(self, df, sequence_length=60):
+    def predict_next_price(self, df, sequence_length=60, coin_symbol=None):
         """
         Bir sonraki 4 saatlik kapanış fiyatını tahmin eder
-        
+
         Args:
             df (pd.DataFrame): Güncel veriler
             sequence_length (int): Sekans uzunluğu
-        
+            coin_symbol (str): Verilirse, model None ise cache'ten EĞİTİLMİŞ model yüklenir
+                               (yeniden eğitim yerine).
+
         Returns:
             dict: Tahmin sonuçları
         """
         try:
-            # **CRITICAL FIX: Check if model is None (lazy loading)**
+            # **PERF FIX: model None ise önce cache'ten eğitilmiş modeli dene (coin biliniyorsa)**
+            if self.model is None and coin_symbol:
+                try:
+                    import model_memory_cache as _mem
+                    with _mem.lock_for(coin_symbol):
+                        cached_model = _mem.get_or_load_lstm(coin_symbol)
+                        if cached_model is not None and getattr(cached_model, 'model', None) is not None:
+                            self.model = cached_model
+                            print(f"⚡ predict_next_price: LSTM cache'ten yüklendi ({coin_symbol})")
+                except Exception as _ce:
+                    print(f"⚠️ predict_next_price cache erişim hatası: {_ce}")
+
+            # Cache yoksa (geriye dönük): model None ise son çare hafif eğitim
             if self.model is None:
                 print("🔄 LSTM model None - loading model...")
                 from lstm_model import CryptoLSTMModel
                 self.model = CryptoLSTMModel()
-                
+
                 # Get or train model
                 processed_df = self.preprocessor.prepare_data(df, use_technical_indicators=True)
                 if processed_df is None:
                     print("❌ Cannot prepare data for model training")
                     return None
-                    
+
                 scaled_data = self.preprocessor.scale_data(processed_df, fit_scaler=True)
                 X, y = self.preprocessor.create_sequences(scaled_data, sequence_length)
-                
+
                 # Simple train-test split
                 split_idx = int(len(X) * 0.8)
                 X_train, X_val = X[:split_idx], X[split_idx:]
                 y_train, y_val = y[:split_idx], y[split_idx:]
-                
+
                 print(f"🔄 Building and training LSTM model with {len(X_train)} samples...")
                 # **CRITICAL FIX: Build model before training**
                 self.model.build_model(lstm_units=[50, 50, 50], dropout_rate=0.2, learning_rate=0.001)
                 self.model.train_model(X_train, y_train, X_val, y_val, epochs=10, verbose=0)
                 print("✅ LSTM model trained successfully")
+                # Eğitilen modeli belleğe al (coin biliniyorsa)
+                if coin_symbol:
+                    try:
+                        import model_memory_cache as _mem
+                        _mem.store_lstm(coin_symbol, self.model)
+                    except Exception:
+                        pass
             
             # **CRITICAL FIX: Ensure scaler is fitted before prediction**
             # Preprocess data to fit scaler if needed

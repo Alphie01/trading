@@ -55,7 +55,7 @@ class CryptoNewsAnalyzer:
         
         # Display API status
         if self.newsapi_key:
-            print(f"🔑 NewsAPI configured and ready (key: {self.newsapi_key[:8]}...)")
+            print("🔑 NewsAPI configured and ready")  # güvenlik: key değeri loglanmaz
         else:
             print("⚠️ NewsAPI not configured - will use free sources only")
         
@@ -482,18 +482,28 @@ class CryptoNewsAnalyzer:
         
         if len(all_news) == 0:
             print("   ⚠️ Hiçbir kaynaktan haber çekilemedi!")
-            print("   💡 İnternet bağlantınızı kontrol edin veya API anahtarlarını gözden geçirin")
-            
-            # **FALLBACK: Mock news data kullan**
-            print("   🔄 Test amaçlı mock haber verileri oluşturuluyor...")
+            # **VERİ DOĞRULUĞU: Mock veri YALNIZ DEMO_MODE=true iken üretilir.**
+            # Production'da (DEMO_MODE kapalı) sahte haber üretme → adımı atla + uyar.
             try:
-                mock_news = self.get_mock_news_data(coin_symbol, days)
-                all_news.extend(mock_news)
-                print(f"   ✅ Mock veri başarılı: {len(mock_news)} test haberi")
-                print("   📢 Bu veriler test amaçlı olup gerçek haber değildir!")
-            except Exception as mock_error:
-                print(f"   ❌ Mock veri oluşturma hatası: {mock_error}")
-        
+                from api_cache import demo_mode
+                _demo = demo_mode()
+            except Exception:
+                _demo = False
+
+            if _demo:
+                print("   🧪 DEMO_MODE aktif — test amaçlı mock haber verileri oluşturuluyor...")
+                try:
+                    mock_news = self.get_mock_news_data(coin_symbol, days)
+                    for _n in mock_news:
+                        _n['is_mock'] = True
+                        _n['data_source'] = 'demo_mock'
+                    all_news.extend(mock_news)
+                    print(f"   ✅ Mock veri (DEMO): {len(mock_news)} test haberi — GERÇEK DEĞİL!")
+                except Exception as mock_error:
+                    print(f"   ❌ Mock veri oluşturma hatası: {mock_error}")
+            else:
+                print("   ⚠️ NEWSAPI_KEY/kaynaklar yok. News sentiment skipped (DEMO_MODE kapalı, sahte veri üretilmedi).")
+
         return all_news
     
     def analyze_news_sentiment_batch(self, news_list):

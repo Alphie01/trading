@@ -457,6 +457,80 @@
         </div>
     </div>
 
+    <!-- Otomasyon Ayarları -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-satellite-dish me-2"></i>Otomasyon Motoru Ayarları</h5>
+                    <a href="{{ url_for('automation_dashboard') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-gauge-high me-1"></i>Market Radar</a>
+                </div>
+                <div class="card-body">
+                    <form id="automationSettingsForm">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="AUTO_DISCOVERY_ENABLED">
+                                    <label class="form-check-label" for="AUTO_DISCOVERY_ENABLED">Otomatik keşif (scheduler)</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Tarama aralığı (dk)</label>
+                                <input type="number" min="1" class="form-control" id="AUTO_DISCOVERY_INTERVAL_MINUTES">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Taramada max sembol</label>
+                                <input type="number" min="1" class="form-control" id="AUTO_MAX_SYMBOLS_PER_SCAN">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Min 24s hacim (USDT)</label>
+                                <input type="number" min="0" step="1000000" class="form-control" id="AUTO_MIN_24H_VOLUME_USDT">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Watchlist fırsat eşiği</label>
+                                <input type="number" min="0" max="100" class="form-control" id="AUTO_WATCHLIST_MIN_OPPORTUNITY">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Hot candidate eşiği</label>
+                                <input type="number" min="0" max="100" class="form-control" id="AUTO_HOT_MIN_OPPORTUNITY">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Max risk skoru</label>
+                                <input type="number" min="0" max="100" class="form-control" id="AUTO_MAX_RISK_SCORE">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Max spread (%)</label>
+                                <input type="number" min="0" step="0.1" class="form-control" id="AUTO_MAX_SPREAD_PERCENT">
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="AUTO_DEMO_MODE">
+                                    <label class="form-check-label" for="AUTO_DEMO_MODE">Demo mode (sahte veri)</label>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="alert alert-danger d-flex align-items-center justify-content-between mb-0 mt-2">
+                                    <div>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" id="AUTO_TRADE_ENABLED">
+                                            <label class="form-check-label fw-bold" for="AUTO_TRADE_ENABLED">Otomatik işlem (AUTO_TRADE)</label>
+                                        </div>
+                                        <small>⚠️ Açık + <code>BINANCE_TESTNET=false</code> ise motor GERÇEK PARA ile işlem açabilir. Önce testnet'te deneyin.</small>
+                                    </div>
+                                    <i class="fas fa-triangle-exclamation fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mt-3">
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Otomasyon Ayarlarını Kaydet</button>
+                            <span id="automationSaveMsg" class="text-success small"></span>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Quick Actions -->
     <div class="row">
         <div class="col-12">
@@ -612,6 +686,47 @@
             Notification.requestPermission();
         }
     }
+
+    // ── Otomasyon Ayarları (GERÇEK backend: /api/automation/settings) ──
+    const AUTO_KEYS = ['AUTO_DISCOVERY_ENABLED','AUTO_DISCOVERY_INTERVAL_MINUTES','AUTO_MAX_SYMBOLS_PER_SCAN',
+        'AUTO_MIN_24H_VOLUME_USDT','AUTO_WATCHLIST_MIN_OPPORTUNITY','AUTO_HOT_MIN_OPPORTUNITY',
+        'AUTO_MAX_RISK_SCORE','AUTO_MAX_SPREAD_PERCENT','AUTO_DEMO_MODE','AUTO_TRADE_ENABLED'];
+    const AUTO_BOOLS = ['AUTO_DISCOVERY_ENABLED','AUTO_DEMO_MODE','AUTO_TRADE_ENABLED'];
+
+    function fillAutomation(s) {
+        AUTO_KEYS.forEach(k => {
+            const el = document.getElementById(k); if (!el || s[k] === undefined || s[k] === null) return;
+            if (AUTO_BOOLS.includes(k)) el.checked = (s[k] === true || String(s[k]).toLowerCase() === 'true');
+            else el.value = s[k];
+        });
+    }
+
+    async function loadAutomationSettings() {
+        try {
+            const r = await fetch('/api/automation/settings').then(x => x.json());
+            if (r.success) fillAutomation(r.settings || {});
+        } catch (e) { /* sessiz */ }
+    }
+
+    document.getElementById('automationSettingsForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const payload = {};
+        AUTO_KEYS.forEach(k => {
+            const el = document.getElementById(k); if (!el) return;
+            payload[k] = AUTO_BOOLS.includes(k) ? el.checked : el.value;
+        });
+        const msg = document.getElementById('automationSaveMsg');
+        msg.className = 'text-muted small'; msg.textContent = 'Kaydediliyor…';
+        try {
+            const r = await fetch('/api/automation/settings', {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+            }).then(x => x.json());
+            if (r.success) { msg.className = 'text-success small'; msg.textContent = '✅ ' + (r.message || 'Kaydedildi'); fillAutomation(r.settings || {}); }
+            else { msg.className = 'text-danger small'; msg.textContent = '❌ ' + (r.error || 'Hata'); }
+        } catch (err) { msg.className = 'text-danger small'; msg.textContent = '❌ ' + err; }
+    });
+
+    loadAutomationSettings();
 </script>
 
 </body>

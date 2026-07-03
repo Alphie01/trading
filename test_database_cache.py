@@ -16,20 +16,10 @@ from dotenv import load_dotenv
 # Environment variables yükle
 load_dotenv()
 
-# Modüllerimizi import et
-try:
-    if os.getenv('MSSQL_SERVER'):
-        from mssql_database import MSSQLTradingDatabase as DatabaseClass
-        DATABASE_TYPE = "MSSQL"
-        print(f"🗄️ MSSQL Server kullanılıyor: {os.getenv('MSSQL_SERVER')}")
-    else:
-        from database import TradingDatabase as DatabaseClass
-        DATABASE_TYPE = "SQLite"
-        print("🗄️ SQLite kullanılıyor")
-except Exception as e:
-    print(f"⚠️ MSSQL bağlantı hatası, SQLite'a geçiliyor: {str(e)}")
-    from database import TradingDatabase as DatabaseClass
-    DATABASE_TYPE = "SQLite"
+# Paylaşılan veri katmanı (PostgreSQL + SQLAlchemy, schema-per-tenant)
+# NOT: Tenant-özel metodlar için önce set_current_tenant(schema) çağrılmalıdır.
+from trading_db import TradingDatabase as DatabaseClass
+DATABASE_TYPE = "PostgreSQL"
 
 from data_fetcher import CryptoDataFetcher
 

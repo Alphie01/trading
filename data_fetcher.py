@@ -9,6 +9,14 @@ from dotenv import load_dotenv
 # Environment variables yükle
 load_dotenv()
 
+# OHLCV response cache (kısa TTL) — aynı coin kısa sürede tekrar istenirse ağ round-trip'i atlar
+try:
+    from api_cache import TTLCache as _TTLCache
+    _OHLCV_CACHE = _TTLCache(int(os.getenv('OHLCV_CACHE_TTL_SECONDS', '60')))
+except Exception:
+    _OHLCV_CACHE = None
+
+
 class CryptoDataFetcher:
     """
     Binance API'si üzerinden kripto para verilerini çeken sınıf
@@ -47,6 +55,19 @@ class CryptoDataFetcher:
         if '/' not in symbol:
             symbol = f"{symbol.upper()}/USDT"
 
+        # Response cache kontrolü
+        _ck = f"{symbol}|{timeframe}|{days}"
+        if _OHLCV_CACHE is not None:
+            _hit = _OHLCV_CACHE.get(_ck)
+            if _hit is not None:
+                try:
+                    from perf_timing import cache_event
+                    cache_event("ohlcv", _ck, True)
+                except Exception:
+                    pass
+                print(f"⚡ OHLCV cache HIT: {_ck}")
+                return _hit.copy()
+
         print(f"{symbol} için {days} günlük {timeframe} verileri çekiliyor...")
 
         # Her zaman aralığı için kaç ms olduğunu al
@@ -74,7 +95,6 @@ class CryptoDataFetcher:
         while len(all_ohlcv) < total_candles_needed:
             try:
                 ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since, limit=limit)
-                print(ohlcv[1])
                 if not ohlcv:
                     print("Veri alınamadı, devam ediliyor...")
                     break  # Hiç veri gelmezse çık
@@ -112,7 +132,49 @@ class CryptoDataFetcher:
         print(f"Toplam {len(df)} mum verisi çekildi.")
         print(f"Tarih aralığı: {df.index[0]} - {df.index[-1]}")
 
+        # Response cache'e yaz
+        if _OHLCV_CACHE is not None and len(df) > 0:
+            try:
+                _OHLCV_CACHE.set(_ck, df.copy())
+            except Exception:
+                pass
+
         return df
+    def fetch_tickers(self, quote='USDT'):
+        """Tüm <quote> paritelerinin 24h ticker verisini çeker (discovery için).
+
+        API key gerektirmez. Dönüş: her biri symbol/base/quote/last/quote_volume/
+        base_volume/percentage(24h %)/high/low/bid/ask içeren dict listesi.
+        """
+        quote = quote.upper()
+        try:
+            tickers = self.exchange.fetch_tickers()
+        except Exception as e:
+            print(f"❌ fetch_tickers hatası: {str(e)}")
+            return []
+
+        out = []
+        for sym, t in tickers.items():
+            try:
+                if not sym.endswith('/' + quote):
+                    continue
+                out.append({
+                    'symbol': sym,
+                    'base': sym.split('/')[0],
+                    'quote': quote,
+                    'last': t.get('last'),
+                    'quote_volume': t.get('quoteVolume') or 0,
+                    'base_volume': t.get('baseVolume') or 0,
+                    'percentage': t.get('percentage'),  # 24h % değişim
+                    'high': t.get('high'),
+                    'low': t.get('low'),
+                    'bid': t.get('bid'),
+                    'ask': t.get('ask'),
+                })
+            except Exception:
+                continue
+        return out
+
     def get_available_symbols(self, base_currency='USDT'):
         """
         Mevcut coin çiftlerini listeler

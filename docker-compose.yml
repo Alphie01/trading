@@ -1,0 +1,61 @@
+# Crypto Trading — PostgreSQL + Web Service (schema-per-tenant)
+# Kullanım: docker compose up --build
+# İlk açılışta entrypoint: DB bekle → shared migrate → tenant migrate → seed → default tenant provision → start
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trading-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-app_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-app_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: trading-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # DB
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app_db}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      APP_ENV: production
+      # Web (config.py: WEB_PORT/SECRET_KEY)
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 5000
+      WEB_DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      # AI service (opsiyonel; ayrı çalıştırılır)
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://localhost:8000}
+      # Seed/provision admin bilgileri (gerçek değerleri .env'den verin, commit ETMEYİN)
+      PLATFORM_ADMIN_USERNAME: ${PLATFORM_ADMIN_USERNAME:-superadmin}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-change-me}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+      DEFAULT_TENANT_SLUG: ${DEFAULT_TENANT_SLUG:-default}
+    ports:
+      - "${WEB_HOST_PORT:-5055}:5000"
+
+  # ai-service DB kullanmaz ve ML-ağırdır (TensorFlow/torch → büyük imaj).
+  # İhtiyaç halinde ayrı bir Dockerfile ile eklenebilir; migrate/seed akışına dahil DEĞİLDİR.
+  # ai:
+  #   build: { context: ., dockerfile: docker/Dockerfile.ai }
+  #   ports: ["8000:8000"]
+
+volumes:
+  postgres_data:

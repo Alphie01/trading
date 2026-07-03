@@ -73,7 +73,7 @@ class CryptoWhaleTracker:
             list: Whale transfer listesi
         """
         if not self.whale_alert_api_key:
-            print("⚠️ Whale Alert API anahtarı bulunamadı, demo veriler kullanılıyor")
+            # Veri doğruluğu: key yoksa demo üretimi yalnız DEMO_MODE'da (aşağıda gate'lenir)
             return self._generate_demo_whale_data(symbol, hours)
         
         try:
@@ -114,8 +114,18 @@ class CryptoWhaleTracker:
             hours (int): Saat sayısı
         
         Returns:
-            list: Demo whale transfer listesi
+            list: Demo whale transfer listesi (YALNIZ DEMO_MODE'da; aksi halde boş)
         """
+        # **VERİ DOĞRULUĞU: Production'da (DEMO_MODE kapalı) sahte whale verisi ÜRETME.**
+        try:
+            from api_cache import demo_mode, warn_missing_key
+            if not demo_mode():
+                warn_missing_key("WHALE_ALERT_API_KEY", "Whale tracking")
+                return []
+        except Exception:
+            return []
+
+        print("🧪 DEMO_MODE aktif — demo whale verisi oluşturuluyor (GERÇEK DEĞİL)")
         demo_transactions = []
         num_transactions = max(1, hours // 4)  # Her 4 saatte bir transfer
         
@@ -138,7 +148,9 @@ class CryptoWhaleTracker:
                 'from': 'unknown' if 'wallet_to' in transfer_type else 'exchange',
                 'to': 'exchange' if 'to_exchange' in transfer_type else 'unknown',
                 'transaction_type': transfer_type,
-                'blockchain': 'bitcoin' if symbol.upper() == 'BTC' else 'ethereum'
+                'blockchain': 'bitcoin' if symbol.upper() == 'BTC' else 'ethereum',
+                'is_mock': True,
+                'data_source': 'demo_mock'
             }
             
             demo_transactions.append(transaction)

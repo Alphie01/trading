@@ -1,0 +1,36 @@
+# Docker build context'ini küçük tut
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/venv/
+**/env/
+**/.venv/
+**/*.egg-info/
+
+# Model artefaktları (büyük, çalışma anında/mount ile)
+model_cache/
+**/model_cache/
+*.h5
+*.hdf5
+*.pkl
+best_crypto_model.h5
+
+# Veri / log / sır
+*.db
+*.sqlite
+*.sqlite3
+*.log
+.env
+**/.env
+cookies.txt
+Archive.zip
+
+# ai-service (bu imaja dahil değil)
+ai-service/
+
+# Git / OS / IDE
+.git/
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/

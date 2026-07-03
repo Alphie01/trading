@@ -37,23 +37,31 @@ from news_analyzer import CryptoNewsAnalyzer
 from whale_tracker import CryptoWhaleTracker
 from binance_trader import BinanceTrader
 from auto_trader_integration import LSTMAutoTrader
-from system_persistence import SystemPersistence
-from auth import AuthManager, setup_login_manager
+# Paylaşılan veri katmanı (PostgreSQL + SQLAlchemy, schema-per-tenant multi-tenancy)
+from trading_db import (
+    TradingDatabase as DatabaseClass,
+    AuthManager,
+    setup_login_manager,
+    SystemPersistence,
+    set_current_tenant,
+    clear_current_tenant,
+)
+DATABASE_TYPE = "PostgreSQL"
+print("🗄️ PostgreSQL (SQLAlchemy, schema-per-tenant) kullanılıyor")
 
-# Database imports with fallback
+# Performans instrumentation (config ile aç/kapa: ANALYSIS_TIMING_ENABLED)
 try:
-    if os.getenv('MSSQL_SERVER'):
-        from mssql_database import MSSQLTradingDatabase as DatabaseClass
-        DATABASE_TYPE = "MSSQL"
-        print(f"🗄️ MSSQL Server kullanılıyor: {os.getenv('MSSQL_SERVER')}")
-    else:
-        from database import TradingDatabase as DatabaseClass
-        DATABASE_TYPE = "SQLite"
-        print("🗄️ SQLite kullanılıyor")
-except Exception as e:
-    print(f"⚠️ MSSQL bağlantı hatası, SQLite'a geçiliyor: {str(e)}")
-    from database import TradingDatabase as DatabaseClass
-    DATABASE_TYPE = "SQLite"
+    from perf_timing import analysis_timer, step as perf_step, cache_event
+except Exception:  # perf_timing yoksa no-op fallback
+    from contextlib import contextmanager as _cm
+    @_cm
+    def analysis_timer(label):
+        yield None
+    @_cm
+    def perf_step(name):
+        yield
+    def cache_event(kind, key, hit):
+        pass
 
 try:
     from model_cache import CachedModelManager
@@ -95,6 +103,309 @@ except Exception as scheduler_init_error:
 # Authentication setup
 auth_manager = AuthManager(db)
 login_manager = setup_login_manager(app, auth_manager)
+
+
+# Multi-tenancy: her istekte aktif tenant bağlamını (search_path) kur/temizle
+@app.before_request
+def _bind_tenant_context():
+    try:
+        from flask_login import current_user
+        if current_user.is_authenticated and getattr(current_user, "tenant_schema", None):
+            set_current_tenant(current_user.tenant_schema)
+        else:
+            clear_current_tenant()
+    except Exception:
+        clear_current_tenant()
+
+
+@app.teardown_request
+def _clear_tenant_context(exc=None):
+    clear_current_tenant()
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Automation Engine API (Faz 4-7) — lazy import (ağır modüller yalnız çağrıda)
+# ───────────────────────────────────────────────────────────────────────────
+@app.route('/api/automation/status')
+@login_required
+def api_automation_status():
+    try:
+        from automation.scheduler import get_scheduler
+        from automation.config import AutomationConfig as AC
+        return jsonify({'success': True, 'status': get_scheduler().status(), 'config': {
+            'min_24h_volume_usdt': AC.MIN_24H_VOLUME_USDT,
+            'interval_minutes': AC.SCAN_INTERVAL_MINUTES,
+            'trade_enabled': AC.TRADE_ENABLED,
+            'demo_mode': AC.DEMO_MODE,
+        }})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/automation/discover', methods=['POST'])
+@login_required
+def api_automation_discover():
+    try:
+        from automation.engine import run_discovery
+        out = run_discovery(persist=True)
+        return jsonify({'success': True,
+                        'summary': {k: out[k] for k in ('scanned', 'passed', 'watchlisted')},
+                        'top': out['top']})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/automation/research', methods=['POST'])
+@login_required
+def api_automation_research():
+    try:
+        from automation.engine import run_research
+        # allow_trades None → AUTO_TRADE_ENABLED (fail-closed; trade yalnız onaylı + AUTO açık ile)
+        out = run_research(persist=True)
+        return jsonify({'success': True,
+                        'summary': {k: out[k] for k in ('researched', 'watchlisted')},
+                        'signals': out['signals'][:20]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/automation/candidates')
+@login_required
+def api_automation_candidates():
+    try:
+        from automation import repository as arepo
+        return jsonify({'success': True,
+                        'candidates': arepo.get_candidates(status=request.args.get('status'))})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/automation/scores')
+@login_required
+def api_automation_scores():
+    try:
+        from automation import repository as arepo
+        return jsonify({'success': True, 'scores': arepo.get_latest_scores()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/automation/signals')
+@login_required
+def api_automation_signals():
+    try:
+        from flask_login import current_user
+        from automation import tenant_repo
+        schema = getattr(current_user, 'tenant_schema', None) or tenant_repo.default_tenant_schema()
+        return jsonify({
+            'success': True,
+            'signals': tenant_repo.recent_signals(schema) if schema else [],
+            'alerts': tenant_repo.recent_alerts(schema) if schema else [],
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/automation/coin/<symbol>')
+@login_required
+def api_automation_coin(symbol):
+    try:
+        from automation import repository as arepo
+        return jsonify({
+            'success': True,
+            'detail': arepo.get_coin_detail(symbol),
+            'history': arepo.get_score_history(symbol),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/automation/coin/<symbol>/research', methods=['POST'])
+@login_required
+def api_automation_coin_research(symbol):
+    try:
+        from automation.engine import run_research
+        out = run_research(symbols=[symbol.upper()], persist=True)
+        from automation import repository as arepo
+        return jsonify({'success': True, 'detail': arepo.get_coin_detail(symbol),
+                        'history': arepo.get_score_history(symbol),
+                        'signal': (out.get('signals') or [None])[0]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/automation/settings', methods=['GET', 'POST'])
+@login_required
+def api_automation_settings():
+    try:
+        from automation.config import AutomationConfig as AC
+        from automation import settings_store
+        if request.method == 'GET':
+            # kaydedilmiş override'ları uygula + güncel değerleri döndür
+            saved = settings_store.load_automation_settings()
+            if saved:
+                AC.apply_overrides(saved)
+            return jsonify({'success': True, 'settings': AC.current_settings()})
+        data = request.get_json(force=True, silent=True) or {}
+        ok = settings_store.save_automation_settings(data)
+        if not ok:
+            return jsonify({'success': False, 'error': 'Kaydedilemedi (default tenant yok olabilir)'}), 500
+        return jsonify({'success': True, 'settings': AC.current_settings(), 'message': 'Otomasyon ayarları kaydedildi'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Simulation / Paper Trading API (SANAL — canlı Binance işlemi YOK)
+# ───────────────────────────────────────────────────────────────────────────
+def _sim_schema():
+    from flask_login import current_user
+    schema = getattr(current_user, 'tenant_schema', None)
+    if schema:
+        return schema
+    from automation import tenant_repo
+    return tenant_repo.default_tenant_schema()
+
+
+@app.route('/api/simulation/runs', methods=['GET', 'POST'])
+@login_required
+def api_simulation_runs():
+    try:
+        from automation import simulation
+        schema = _sim_schema()
+        if not schema:
+            return jsonify({'success': False, 'error': 'tenant bulunamadı'}), 400
+        if request.method == 'GET':
+            return jsonify({'success': True, 'simulations': simulation.list_simulations(schema)})
+        from flask_login import current_user
+        data = request.get_json(force=True, silent=True) or {}
+        res = simulation.create_simulation(schema, data, created_by=getattr(current_user, 'id', None))
+        return jsonify(res), (200 if res.get('success') else 400)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/simulation/runs/<int:sid>')
+@login_required
+def api_simulation_get(sid):
+    try:
+        from automation import simulation
+        schema = _sim_schema()
+        sim = simulation.get_simulation(schema, sid) if schema else None
+        if not sim:
+            return jsonify({'success': False, 'error': 'bulunamadı'}), 404
+        return jsonify({'success': True, 'simulation': sim, 'metrics': simulation.get_metrics(schema, sid)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/simulation/runs/<int:sid>/<action>', methods=['POST'])
+@login_required
+def api_simulation_action(sid, action):
+    try:
+        from automation import simulation
+        schema = _sim_schema()
+        if not schema:
+            return jsonify({'success': False, 'error': 'tenant bulunamadı'}), 400
+        mapping = {'pause': 'PAUSED', 'resume': 'RUNNING', 'stop': 'STOPPED'}
+        if action not in mapping:
+            return jsonify({'success': False, 'error': 'geçersiz aksiyon'}), 400
+        return jsonify(simulation.set_status(schema, sid, mapping[action]))
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/simulation/runs/<int:sid>', methods=['DELETE'])
+@login_required
+def api_simulation_delete(sid):
+    try:
+        from automation import simulation
+        schema = _sim_schema()
+        return jsonify(simulation.delete_simulation(schema, sid) if schema else {'success': False})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/simulation/runs/<int:sid>/positions')
+@login_required
+def api_simulation_positions(sid):
+    try:
+        from automation.simulation import repository as srepo
+        schema = _sim_schema()
+        status = request.args.get('status')
+        if status:
+            pos = srepo.get_positions(schema, sid, status=status.upper())
+        else:
+            pos = srepo.get_open_positions(schema, sid) + srepo.get_closed_positions(schema, sid)
+        return jsonify({'success': True, 'positions': pos})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/simulation/runs/<int:sid>/trades')
+@login_required
+def api_simulation_trades(sid):
+    try:
+        from automation.simulation import repository as srepo
+        return jsonify({'success': True, 'trades': srepo.get_trades(_sim_schema(), sid)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/simulation/runs/<int:sid>/metrics')
+@login_required
+def api_simulation_metrics(sid):
+    try:
+        from automation import simulation
+        return jsonify({'success': True, 'metrics': simulation.get_metrics(_sim_schema(), sid)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/simulation/runs/<int:sid>/reports/<period>')
+@login_required
+def api_simulation_reports(sid, period):
+    try:
+        from automation import simulation
+        if period.upper() not in ('DAILY', 'WEEKLY', 'MONTHLY'):
+            return jsonify({'success': False, 'error': 'period DAILY/WEEKLY/MONTHLY olmalı'}), 400
+        return jsonify({'success': True, 'reports': simulation.get_period_reports(_sim_schema(), sid, period.upper())})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/simulation/runs/<int:sid>/coin-performance')
+@login_required
+def api_simulation_coin_perf(sid):
+    try:
+        from automation import simulation
+        return jsonify({'success': True, 'coins': simulation.get_coin_performance(_sim_schema(), sid)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/simulation/runs/<int:sid>/signal-accuracy')
+@login_required
+def api_simulation_signal_accuracy(sid):
+    try:
+        from automation import simulation
+        return jsonify({'success': True, 'accuracy': simulation.get_signal_accuracy(_sim_schema(), sid)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Settings formunu GERÇEK backend'e bağla (eski settings.html mock idi → system_state'e yaz)
+@app.route('/api/settings', methods=['GET', 'POST'])
+@login_required
+def api_settings():
+    try:
+        if request.method == 'GET':
+            return jsonify({'success': True, 'settings': db.load_system_state('user_settings', {})})
+        data = request.get_json(force=True, silent=True) or {}
+        db.save_system_state('user_settings', data)
+        return jsonify({'success': True, 'message': 'Ayarlar kaydedildi'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # Logging ayarları
 logging.basicConfig(level=logging.INFO)
@@ -178,6 +489,7 @@ class CoinMonitor:
     def analyze_coin(self, coin_symbol):
         """Tek coin analizi"""
         try:
+            logger.info(f"Buradayız Baba")
             logger.info(f"🔍 {coin_symbol} analizi başlıyor...")
             
             # Environment variables'dan ayarları al
@@ -371,35 +683,38 @@ class CoinMonitor:
             
             # Veri çek
             print(f"🔽 {coin_symbol}/USDT için {training_days} günlük 4h verileri çekiliyor...")
-            df = self.fetcher.fetch_ohlcv_data(coin_symbol, days=training_days)
+            with perf_step("fetch_ohlcv"):
+                df = self.fetcher.fetch_ohlcv_data(coin_symbol, days=training_days)
             if df is None:
                 return {'success': False, 'error': 'Veri çekilemedi'}
-            
+
             print(f"✅ Başarıyla {len(df)} adet veri çekildi")
             print(f"📅 Tarih aralığı: {df.index[0]} - {df.index[-1]}")
-            
+
             # Veri ön işleme
             preprocessor = CryptoDataPreprocessor()
-            processed_df = preprocessor.prepare_data(df, use_technical_indicators=True)
-            
+            with perf_step("preprocess"):
+                processed_df = preprocessor.prepare_data(df, use_technical_indicators=True)
+
             if len(processed_df) < 100:
                 logger.warning(f"⚠️ {coin_symbol} için yetersiz veri: {len(processed_df)} < 100")
                 return {'success': False, 'error': f'Yetersiz veri: {len(processed_df)} veri noktası'}
-            
+
             print(f"🔧 Veri hazırlama tamamlandı. Toplam {len(processed_df)} veri noktası.")
-            
-            # Predictor oluştur (lazy loading)
+
+            # Predictor oluştur (lazy loading — modeller bellek/disk cache'ten gelir, yeniden eğitim yok)
             predictor = CryptoPricePredictor(
                 model=None,  # Lazy loading
                 preprocessor=preprocessor,
                 news_analyzer=self.news_analyzer,
                 whale_tracker=self.whale_tracker
             )
-            
+
             # **NEW: Use synchronous wrapper for async multi-model analysis**
             print("🔄 Running NEW async multi-model analysis...")
             print("📋 Execution order: LSTM → DQN → Hybrid (sequential)")
-            multi_results = predictor.predict_multi_model_analysis_sync(processed_df, coin_symbol)
+            with perf_step("model_predict"):
+                multi_results = predictor.predict_multi_model_analysis_sync(processed_df, coin_symbol)
             
             # **CRITICAL FIX: Check if ANY advanced model succeeded, not just ensemble**
             advanced_models_working = (
@@ -567,17 +882,8 @@ class CoinMonitor:
                             # Basit 24h değişim hesabı (gerçekte daha karmaşık olmalı)
                             price_change_24h = 0  # Placeholder
                             
-                            # DB güncelle
-                            with self.db.db_path as conn:
-                                cursor = conn.cursor()
-                                cursor.execute('''
-                                    UPDATE coins SET 
-                                        current_price = ?, 
-                                        price_change_24h = ?,
-                                        last_analysis = CURRENT_TIMESTAMP
-                                    WHERE symbol = ?
-                                ''', (current_price, price_change_24h, symbol))
-                                conn.commit()
+                            # DB güncelle (ortak katalog fiyatı + tenant izleme)
+                            self.db.update_coin_price(symbol, current_price, price_change_24h)
                     
                     # Bekleme
                     for _ in range(interval_minutes * 60):  # Saniye cinsinden
@@ -911,16 +1217,9 @@ def get_coins_with_live_data():
                 current_price = ticker['last']
                 price_change_24h = ticker['percentage']
                 
-                # Coins tablosunu güncelle
+                # Coins tablosunu güncelle (ortak katalog + tenant izleme)
                 try:
-                    query = """
-                    UPDATE coins SET 
-                        current_price = ?,
-                        price_change_24h = ?,
-                        last_analysis = GETDATE()
-                    WHERE symbol = ?
-                    """
-                    db.execute_query(query, (current_price, price_change_24h, symbol))
+                    db.update_coin_price(symbol, current_price, price_change_24h)
                     print(f"💰 {symbol}: ${current_price:.2f} ({price_change_24h:+.2f}%)")
                 except Exception as update_error:
                     print(f"⚠️ {symbol} coins tablosu güncelleme hatası: {update_error}")
@@ -1193,15 +1492,22 @@ def analyze_coin_route(symbol):
     """Detaylı coin analizi sayfası - Multi-model destekli"""
     try:
         symbol = symbol.upper()
-        
+
+        # **YENİ: force_refresh — kullanıcı taze (canlı) analiz isterse cache atlanır**
+        force_refresh = request.args.get('force_refresh', '').lower() in ('1', 'true', 'yes')
+
         # **NEW: Database-based cache kontrolü**
         cached_analysis = None
         try:
             # Cache temizle (süresi dolmuş olanları)
             db.cleanup_expired_cache()
-            
-            # Geçerli cache var mı kontrol et
-            cached_analysis = db.get_prediction_cache(symbol)
+
+            # Geçerli cache var mı kontrol et (force_refresh ise cache atlanır)
+            if force_refresh:
+                print(f"🔄 {symbol} force_refresh — cache atlanıyor, canlı analiz yapılacak")
+                cached_analysis = None
+            else:
+                cached_analysis = db.get_prediction_cache(symbol)
             
             if cached_analysis:
                 cache_age = datetime.now() - cached_analysis['cache_timestamp']
@@ -1379,7 +1685,8 @@ def analyze_coin_route(symbol):
             # **IMPROVED: Try multi-model with better error handling**
             try:
                 print(f"🚀 {symbol} Multi-Model Analysis başlatılıyor...")
-                result = coin_monitor.analyze_coin_multi_model(symbol)
+                with analysis_timer(f"{symbol}/USDT"):
+                    result = coin_monitor.analyze_coin_multi_model(symbol)
                 
                 if result and result.get('success', False):
                     result['model_type'] = 'Multi_Model_Analysis'
@@ -1875,6 +2182,41 @@ def settings():
     """Ayarlar sayfası"""
     return render_template('settings.html')
 
+
+@app.route('/automation')
+@login_required
+def automation_dashboard():
+    """Otomasyon motoru kokpiti (Market Radar) — keşif/skorlama/sinyal izleme."""
+    return render_template('automation.html')
+
+
+@app.route('/automation/coin/<symbol>')
+@login_required
+def automation_coin_detail(symbol):
+    """Tek coin research detay sayfası."""
+    return render_template('automation_coin.html', symbol=symbol.upper())
+
+
+@app.route('/simulation')
+@login_required
+def simulation_list():
+    """Simülasyon (paper trading) listesi."""
+    return render_template('simulation.html')
+
+
+@app.route('/simulation/new')
+@login_required
+def simulation_new():
+    """Yeni simülasyon başlatma formu."""
+    return render_template('simulation_new.html')
+
+
+@app.route('/simulation/<int:sid>')
+@login_required
+def simulation_detail(sid):
+    """Simülasyon detay sayfası (sekmeler + grafikler)."""
+    return render_template('simulation_detail.html', sim_id=sid)
+
 @app.route('/test_news_api')
 @login_required
 def test_news_api():
@@ -2349,7 +2691,7 @@ def main():
 ║                                                                    ║
 ║            🌐 KRİPTO TRADİNG DASHBOARD WEB UYGULAMASI 🌐          ║
 ║                                                                    ║
-║  📊 Çoklu coin izleme                    🗄️ MSSQL Database       ║
+║  📊 Çoklu coin izleme                    🗄️ PostgreSQL DB        ║
 ║  💰 İşlem geçmişi takibi                 🔐 Environment Vars     ║
 ║  📈 Kar/zarar analizi                    💾 State Persistence    ║
 ║  🤖 Otomatik trading                     🔄 Auto Resume          ║
@@ -2361,9 +2703,13 @@ def main():
     try:
         # Environment variables kontrol
         print(f"🗄️ Database: {DATABASE_TYPE}")
-        if DATABASE_TYPE == "MSSQL":
-            print(f"   📍 Server: {os.getenv('MSSQL_SERVER', 'N/A')}")
-            print(f"   🏪 Database: {os.getenv('MSSQL_DATABASE', 'N/A')}")
+        _db_url = os.getenv('DATABASE_URL', '')
+        if _db_url:
+            # host bilgisini güvenli şekilde göster (kimlik bilgisi olmadan)
+            try:
+                print(f"   📍 DB Host: {_db_url.rsplit('@', 1)[-1]}")
+            except Exception:
+                pass
         
         # System startup summary
         startup_summary = persistence.get_startup_summary()
@@ -2403,7 +2749,14 @@ def main():
         print(f"💰 Portfolio: http://localhost:{port}/portfolio") 
         print(f"⚙️ Settings: http://localhost:{port}/settings")
         print("🔴 Durdurmak için Ctrl+C")
-        
+
+        # Automation engine scheduler (AUTO_DISCOVERY_ENABLED ile; canlı trade default KAPALI)
+        try:
+            from automation.scheduler import get_scheduler
+            get_scheduler().start()
+        except Exception as _ae:
+            print(f"⚠️ Automation scheduler başlatılamadı: {_ae}")
+
         # Flask uygulamasını başlat
         socketio.run(app, host=host, port=port, debug=debug)
         

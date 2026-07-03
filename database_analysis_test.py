@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import sys
 
 try:
-    from database import TradingDatabase
+    from trading_db import TradingDatabase
     from dqn_trading_model import DQNTradingModel
     from hybrid_trading_model import HybridTradingModel
     from data_fetcher import CryptoDataFetcher
