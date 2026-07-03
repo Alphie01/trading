@@ -285,3 +285,90 @@ class MarketIntelligenceSnapshot(SharedBase):
     computed_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (Index("ix_mis_symbol_time", "symbol", "computed_at"),)
+
+
+# ============================================================================ #
+# ML Evaluation & Feature Store — SHARED (evren-geneli ölçüm/feature metadata)
+# Faz 1: walk-forward evaluation + feature snapshot (etiket geç doldurulur).
+# "eğitimler ortak" → ölçüm/ağırlık/feature metadata shared'da durur (coin_scores gibi).
+# ============================================================================ #
+class FeatureSnapshot(SharedBase):
+    """Bir sembol+feature_set için hesaplanmış feature vektörü (eğitim/backtest kaynağı).
+
+    `label` ileriye dönük pencere kapanınca (evaluation/feedback job) geri-doldurulur.
+    """
+
+    __tablename__ = "feature_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(30), nullable=False)
+    feature_set_version = Column(String(40), nullable=False)  # v1_lstm_25 | v2_ensemble_advanced | technical_baseline_v1
+    timeframe = Column(String(10))
+    features = Column(JSONB)
+    feature_hash = Column(String(64))
+    horizon = Column(Integer)                 # etiket için ileri bar sayısı
+    label = Column(Numeric(12, 6))            # forward return / yön (geç doldurulur)
+    label_type = Column(String(20))           # forward_return | direction
+    resolved = Column(Boolean, nullable=False, server_default="false")
+    bar_time = Column(DateTime(timezone=True))  # snapshot'ın ait olduğu mum zamanı
+    computed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_feature_snapshots_symbol_ver_time", "symbol", "feature_set_version", "computed_at"),
+    )
+
+
+class ModelEvaluation(SharedBase):
+    """Model/sinyal değerlendirme kaydı (walk-forward / holdout / forward-test).
+
+    `metrics`: directional_accuracy/mae/rmse/hit_rate/win_rate/profit_factor/... ;
+    `folds`: per-fold detay (walk-forward). `model_id` → model_registry.model_id (baseline'da None).
+    """
+
+    __tablename__ = "model_evaluations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(String(120))            # model_registry.model_id'ye mantıksal referans
+    symbol = Column(String(30), nullable=False)
+    model_type = Column(String(50))           # baseline_technical | lstm | random_forest | ensemble ...
+    feature_set_version = Column(String(40))
+    eval_type = Column(String(30), nullable=False)  # walk_forward | holdout | forward_test
+    timeframe = Column(String(10))
+    horizon = Column(Integer)
+    sample_count = Column(Integer)
+    metrics = Column(JSONB)
+    folds = Column(JSONB)
+    window_start = Column(DateTime(timezone=True))
+    window_end = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_model_evaluations_symbol_type_time", "symbol", "model_type", "created_at"),
+    )
+
+
+class ModelWeight(SharedBase):
+    """Ensemble model ağırlıkları (symbol × model_type × feature_set × regime × timeframe).
+
+    Faz 4'te simülasyon performansından EWMA ile güncellenir; EnsembleVoter karar anında okur.
+    regime/timeframe = 'all' → segment-bağımsız varsayılan ağırlık.
+    """
+
+    __tablename__ = "model_weights"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(30), nullable=False)
+    model_type = Column(String(50), nullable=False)
+    feature_set_version = Column(String(40))
+    regime = Column(String(20), nullable=False, server_default="all")
+    timeframe = Column(String(10), nullable=False, server_default="all")
+    weight = Column(Numeric(10, 4), nullable=False, server_default="0")
+    sample_count = Column(Integer, server_default="0")
+    win_rate = Column(Numeric(6, 2))
+    profit_factor = Column(Numeric(12, 4))
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_model_weights_symbol_regime_tf", "symbol", "regime", "timeframe"),
+    )

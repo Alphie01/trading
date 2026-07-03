@@ -1,42 +1,51 @@
+# syntax=docker/dockerfile:1
 # Monolith imajı — GPU (NVIDIA CUDA) sürümü.
 # Taban: TensorFlow'un resmi GPU imajı (Ubuntu 22.04 + Python 3.11 + TF 2.15 GPU + CUDA 12.2 + cuDNN).
-# Bu imaj SADECE NVIDIA GPU + nvidia-container-toolkit olan Linux host'ta anlamlıdır
-# (Apple Silicon Mac'te GPU'ya erişilemez). GPU yoksa TensorFlow otomatik CPU'ya düşer ama imaj büyüktür.
+# SADECE NVIDIA GPU + nvidia-container-toolkit olan Linux host'ta anlamlıdır.
 #
 # Çalıştırma (Debian/NVIDIA sunucu):
-#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
-# GPU'nun kullanıldığını doğrula:
-#   docker compose logs web | grep -i -E "GPU|CUDA"   → "🎮 ... GPU(s) detected" / "GPU mode activated"
+#   DOCKER_BUILDKIT=1 docker compose build web   (BuildKit pip-cache mount için gerekli; modern docker'da default)
+#   docker compose up -d
+# GPU doğrula: docker compose logs web | grep -i -E "GPU|CUDA"
+#
+# HIZLANDIRMALAR:
+#  - torch → CPU wheel (yalnız FinBERT için; ana LSTM/DQN eğitimi TF-GPU'da → ~2.5GB CUDA torch GEREKSİZ)
+#  - tensorflow HARİÇ (taban imajda GPU'lu TF var); plotly/quantlib/stable-baselines3 HARİÇ (0 import)
+#  - pip cache mount → yeniden build'lerde wheel'ler yeniden indirilmez
+#  - --ignore-installed blinker → TF taban imajının distutils blinker'ı uninstall edilemiyordu (build hatası)
 FROM tensorflow/tensorflow:2.15.0-gpu
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
     TF_CPP_MIN_LOG_LEVEL=2 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 WORKDIR /app
 
-# Ek sistem bağımlılıkları (bazı wheel'lerin derlenmesi için)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential gcc g++ curl libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 1) Paylaşılan veri katmanı
-COPY packages/database /app/packages/database
-RUN pip install /app/packages/database
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel
 
-# 2) Bağımlılıklar — tensorflow HARİÇ (taban imajda GPU'lu TF zaten var, üzerine yazma).
-#    torch==2.1.1 varsayılan PyPI wheel'i = CUDA 12.1 build → GPU'da çalışır.
+# Bağımlılıklar (tek RUN, cache mount'lu).
 COPY requirements.txt /app/requirements.txt
-RUN grep -ivE '^[[:space:]]*tensorflow==' /app/requirements.txt > /app/requirements.gpu.txt \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    grep -ivE '^[[:space:]]*(tensorflow|torch|plotly|quantlib|stable-baselines3)==' \
+        /app/requirements.txt > /app/requirements.gpu.txt \
+    && pip install --ignore-installed blinker \
+    && pip install torch==2.1.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu \
     && pip install -r /app/requirements.gpu.txt
 
-# 3) Uygulama kodu (.dockerignore ile filtreli)
-COPY . /app
+# Paylaşılan veri katmanı (nadir değişir → app kodundan önce; cache dostu)
+COPY packages/database /app/packages/database
+RUN --mount=type=cache,target=/root/.cache/pip pip install /app/packages/database
 
-# 4) Açılış script'leri kök seviyeye
+# Uygulama kodu (.dockerignore filtreli) + açılış script'leri
+COPY . /app
 COPY docker/entrypoint.sh /app/entrypoint.sh
 COPY docker/wait_for_db.py /app/wait_for_db.py
 RUN chmod +x /app/entrypoint.sh

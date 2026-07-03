@@ -31,13 +31,18 @@ def default_tenant_schema() -> Optional[str]:
         return None
 
 
-def save_signal(schema: str, score: Dict) -> None:
+def save_signal(schema: str, score: Dict) -> Optional[int]:
+    """Sinyali tenant automation_signals'a yazar ve eklenen satır id'sini döndürür.
+
+    Dönen id, simülasyon/feedback için sinyal→sonuç linkage'inde kullanılır
+    (SimulationPosition.entry_signal_id). Hata/atlama → None.
+    """
     signal = {"STRONG_BUY": "BUY", "BUY": "BUY", "SELL": "SELL", "STRONG_SELL": "SELL"}.get(
         score.get("recommendation", "HOLD"), "HOLD"
     )
     try:
         with get_tenant_session(schema) as s:
-            s.add(AutomationSignal(
+            row = AutomationSignal(
                 symbol=(score.get("symbol") or "").upper(),
                 signal=signal,
                 recommendation=score.get("recommendation"),
@@ -47,9 +52,13 @@ def save_signal(schema: str, score: Dict) -> None:
                 reasons=score.get("reasons"),
                 warnings=score.get("warnings"),
                 source="automation",
-            ))
+            )
+            s.add(row)
+            s.flush()  # PK ata → sinyal→sonuç linkage için id döndür
+            return row.id
     except Exception as e:
         print(f"❌ save_signal hatası: {e}")
+        return None
 
 
 def save_alert(schema: str, symbol: Optional[str], level: str, title: str, message: str) -> None:

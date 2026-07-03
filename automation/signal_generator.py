@@ -30,7 +30,11 @@ def generate_signal(score: Dict, schema: Optional[str], persist: bool = True) ->
     if persist and schema:
         # Yalnız anlamlı sinyalleri kaydet (HOLD spam'i önle)
         if signal != "HOLD" or opp >= C.WATCHLIST_MIN_OPPORTUNITY:
-            tenant_repo.save_signal(schema, score)
+            sid = tenant_repo.save_signal(schema, score)
+            # Sinyal→sonuç linkage (Faz 1): simülasyon entry_signal_id'yi buradan alır.
+            # score dict cycle_signals'a taşınır (engine.run_research) → process_cycle okur.
+            if sid is not None:
+                score["signal_id"] = str(sid)
 
         # Kritik/dikkat uyarıları
         warnings = score.get("warnings") or []

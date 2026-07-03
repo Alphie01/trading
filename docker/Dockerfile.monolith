@@ -1,40 +1,46 @@
-# Monolith imajı (web_app.py) — TAM özellik seti:
-#   LSTM/DQN (TensorFlow) + haber/whale + automation engine + simulation (paper trading) + dashboard.
-# Build context = repo kökü (trading/). Ağır ML bağımlılıkları içerir (TF/torch/transformers) → büyük imaj.
-# Not: hafif mikroservis dağıtımı için docker/Dockerfile (web-service) korunur.
+# syntax=docker/dockerfile:1
+# Monolith imajı (web_app.py) — CPU sürümü (python:3.11-slim tabanı).
+#   LSTM/DQN (TensorFlow-CPU) + haber/whale + automation + simulation + dashboard + market intelligence.
+# GPU'lu sunucu için docker/Dockerfile.monolith.gpu kullanın.
+#
+# HIZLANDIRMALAR:
+#  - torch → CPU wheel (bu CPU imajı; varsayılan cu121 ~2.5GB CUDA kütüphanesini GEREKSİZ indirir)
+#  - kullanılmayan ağır paketler HARİÇ (plotly/quantlib/stable-baselines3; 0 import)
+#  - pip cache mount → yeniden build'lerde wheel'ler yeniden indirilmez (BuildKit; modern docker'da default)
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    TF_CPP_MIN_LOG_LEVEL=2
+    TF_CPP_MIN_LOG_LEVEL=2 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# Sistem bağımlılıkları: numpy/scipy/tensorflow/torch runtime (libgomp) + bazı paketlerin derlenmesi
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential gcc g++ curl libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 1) Paylaşılan veri katmanı paketi (SQLAlchemy/alembic/psycopg buradan gelir)
-COPY packages/database /app/packages/database
-RUN pip install /app/packages/database
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel
 
-# 2) Monolith bağımlılıkları (TF/torch/transformers dahil — bu katman ayrı tutuldu ki kod
-#    değişince yeniden kurulmasın)
+# Bağımlılıklar (tek RUN, cache mount'lu). tensorflow (CPU) KORUNUR — bu imajın ana ML motoru.
 COPY requirements.txt /app/requirements.txt
-RUN pip install -r /app/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    grep -ivE '^[[:space:]]*(torch|plotly|quantlib|stable-baselines3)==' \
+        /app/requirements.txt > /app/requirements.cpu.txt \
+    && pip install torch==2.1.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu \
+    && pip install -r /app/requirements.cpu.txt
 
-# 3) Uygulama kodu: tüm kök modüller, automation/, templates/, static/ (.dockerignore ile filtreli)
+# Paylaşılan veri katmanı (nadir değişir → app kodundan önce; cache dostu)
+COPY packages/database /app/packages/database
+RUN --mount=type=cache,target=/root/.cache/pip pip install /app/packages/database
+
+# Uygulama kodu + açılış script'leri
 COPY . /app
-
-# 4) Açılış script'lerini kök seviyeye kopyala (entrypoint /app/wait_for_db.py bekler)
 COPY docker/entrypoint.sh /app/entrypoint.sh
 COPY docker/wait_for_db.py /app/wait_for_db.py
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 5000
-
-# entrypoint: DB bekle → shared migrate → tenant migrate → seed → default provision → exec CMD
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["python", "docker/run_monolith.py"]
