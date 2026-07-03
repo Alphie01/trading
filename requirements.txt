@@ -23,6 +23,9 @@ vaderSentiment==3.3.2
 beautifulsoup4==4.12.2
 newsapi-python==0.2.7
 textblob==0.17.1
+# Market Intelligence — RSS toplayıcılar (haber kaynakları) + Google Trends (sosyal momentum)
+feedparser==6.0.11
+pytrends==4.9.2
 
 # Whale Tracking
 web3==6.11.3

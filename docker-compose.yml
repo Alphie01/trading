@@ -25,7 +25,7 @@ services:
       context: .
       # Monolith imajı (web_app.py) — automation + simulation + tüm özellikler burada.
       # Hafif mikroservis için docker/Dockerfile (web-service) korunur; prod artık monolith.
-      dockerfile: docker/Dockerfile.monolith
+      dockerfile: docker/Dockerfile.monolith.gpu
     container_name: trading-web
     restart: unless-stopped
     depends_on:
@@ -42,6 +42,11 @@ services:
       FLASK_PORT: 5000
       FLASK_DEBUG: "False"
       FLASK_SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      # Cihaz: bu (varsayılan) imaj CPU'dur → CPU'ya zorla (temiz log, GPU aramaz).
+      # GPU için docker-compose.gpu.yml override'ı bunu boşaltır. Bkz. .env.example.
+      TRADING_FORCE_CPU: ""
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
       # (Web-service ile geriye uyum için zararsız — monolith kullanmaz)
       WEB_HOST: 0.0.0.0
       WEB_PORT: 5000
@@ -49,14 +54,37 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       # AI service (opsiyonel; ayrı çalıştırılır)
       AI_SERVICE_URL: ${AI_SERVICE_URL:-http://localhost:8000}
+      # Market Intelligence + Ollama (LLM haber/sosyal analizi). Ollama host'ta 11434 yayınlar
+      # → host.docker.internal ile erişilir (aşağıdaki extra_hosts). Default'lar KAPALI (opt-in).
+      INTELLIGENCE_ENABLED: ${INTELLIGENCE_ENABLED:-false}
+      AUTO_MARKET_INTEL_ENABLED: ${AUTO_MARKET_INTEL_ENABLED:-false}
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED:-false}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:9b}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-60}
+      OLLAMA_MAX_RETRIES: ${OLLAMA_MAX_RETRIES:-2}
+      OLLAMA_REQUIRE_JSON: ${OLLAMA_REQUIRE_JSON:-true}
+      # Sosyal medya (Faz 5): Reddit + Google Trends
+      INTEL_SOCIAL_ENABLED: ${INTEL_SOCIAL_ENABLED:-false}
+      INTEL_GOOGLE_TRENDS_ENABLED: ${INTEL_GOOGLE_TRENDS_ENABLED:-true}
       # Seed/provision admin bilgileri (gerçek değerleri .env'den verin, commit ETMEYİN)
       PLATFORM_ADMIN_USERNAME: ${PLATFORM_ADMIN_USERNAME:-superadmin}
       PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-change-me}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
       DEFAULT_TENANT_SLUG: ${DEFAULT_TENANT_SLUG:-default}
+    # Host'ta çalışan Ollama'ya (11434) konteynerden erişim (Linux'ta host-gateway şart)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${WEB_HOST_PORT:-5055}:5000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # ai-service DB kullanmaz ve ML-ağırdır (TensorFlow/torch → büyük imaj).
   # İhtiyaç halinde ayrı bir Dockerfile ile eklenebilir; migrate/seed akışına dahil DEĞİLDİR.

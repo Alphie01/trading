@@ -23,6 +23,9 @@
         </a>
 
         <div class="nav-group-label">Analiz</div>
+        <a class="navlink {{ 'active' if ep == 'market_intelligence' }}" href="{{ url_for('market_intelligence') }}">
+            <i class="fas fa-brain"></i> Market Intelligence
+        </a>
         <a class="navlink" href="{{ url_for('signals_alias') }}">
             <i class="fas fa-bolt"></i> Signals
         </a>

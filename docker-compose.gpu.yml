@@ -1,0 +1,29 @@
+# GPU override — NVIDIA GPU'lu Linux sunucu için.
+# Ana docker-compose.yml ile BİRLİKTE kullanılır; `web` servisini CUDA'lı imaja çevirir ve GPU'yu ayırır.
+#
+# Gereksinim: host'ta NVIDIA sürücüsü + nvidia-container-toolkit kurulu olmalı
+#   (test: `docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi`).
+#
+# Çalıştırma:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
+# veya sunucunun .env'ine `COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml` ekleyip
+#   düz `docker compose up --build -d` (bkz. .env.example).
+services:
+  web:
+    build:
+      dockerfile: docker/Dockerfile.monolith.gpu
+    environment:
+      # GPU-ÖNCELİKLİ: ana compose'un TRADING_FORCE_CPU=1'ini boşaltır → tf_config Linux'ta GPU'yu görür.
+      TRADING_FORCE_CPU: ""
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    # Konteynere GPU ayır (Compose Deploy spec — modern `docker compose` bunu onurlandırır)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Eski Compose sürümleri için alternatif (gerekirse yukarıdaki deploy yerine):
+    # gpus: all

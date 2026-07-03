@@ -28,6 +28,8 @@ class AutomationConfig:
     # Modlar / güvenlik
     DEMO_MODE = _bool("AUTO_DEMO_MODE", "false")
     TRADE_ENABLED = _bool("AUTO_TRADE_ENABLED", "false")  # canlı trade — Faz 7, default KAPALI
+    # Market Intelligence (haber/sosyal/LLM) skorlamaya bağlansın mı — default KAPALI (opt-in)
+    MARKET_INTEL_ENABLED = _bool("AUTO_MARKET_INTEL_ENABLED", "false")
 
     # Stablecoin base'leri (discovery dışı)
     STABLE_BASES = set(_csv(
@@ -41,6 +43,9 @@ class AutomationConfig:
     W_AI_PREDICTION = float(os.getenv("AUTO_W_AI_PREDICTION", "0.25"))
     W_SENTIMENT = float(os.getenv("AUTO_W_SENTIMENT", "0.10"))
     W_WHALE = float(os.getenv("AUTO_W_WHALE", "0.10"))
+    # Market Intelligence bileşen ağırlıkları (score_full mevcut olanlar üzerinden normalize eder)
+    W_NEWS_QUALITY = float(os.getenv("AUTO_W_NEWS_QUALITY", "0.10"))
+    W_SOCIAL_MOMENTUM = float(os.getenv("AUTO_W_SOCIAL_MOMENTUM", "0.10"))
 
     # Watchlist eşiği
     WATCHLIST_MIN_OPPORTUNITY = float(os.getenv("AUTO_WATCHLIST_MIN_OPPORTUNITY", "60"))
@@ -64,6 +69,9 @@ class AutomationConfig:
         "AUTO_MAX_SPREAD_PERCENT": ("MAX_SPREAD_PERCENT", "float"),
         "AUTO_DEMO_MODE": ("DEMO_MODE", "bool"),
         "AUTO_TRADE_ENABLED": ("TRADE_ENABLED", "bool"),
+        "AUTO_MARKET_INTEL_ENABLED": ("MARKET_INTEL_ENABLED", "bool"),
+        "AUTO_W_NEWS_QUALITY": ("W_NEWS_QUALITY", "float"),
+        "AUTO_W_SOCIAL_MOMENTUM": ("W_SOCIAL_MOMENTUM", "float"),
         "AUTO_WATCHLIST_MIN_OPPORTUNITY": ("WATCHLIST_MIN_OPPORTUNITY", "float"),
         "AUTO_HOT_MIN_OPPORTUNITY": ("HOT_MIN_OPPORTUNITY", "float"),
         "AUTO_MAX_RISK_SCORE": ("MAX_RISK_SCORE", "float"),

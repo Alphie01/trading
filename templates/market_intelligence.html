@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Market Intelligence · Paera Terminal{% endblock %}
+
+{% block head %}
+<style>
+    .mi-src-tier { display:inline-block; width:22px; text-align:center; border-radius:5px; font-size:11px; font-weight:700; padding:1px 0; }
+    .mi-src-tier.t1 { background:var(--green-dim); color:var(--green); }
+    .mi-src-tier.t2 { background:var(--blue-dim); color:var(--blue); }
+    .mi-src-tier.t3 { background:var(--yellow-dim); color:var(--yellow); }
+    .mi-src-tier.t4 { background:var(--surface-2); color:var(--text-2); }
+    .mi-bar { height:6px; border-radius:3px; background:var(--surface-2); overflow:hidden; }
+    .mi-bar > span { display:block; height:100%; }
+    .mi-off { color:var(--muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1><i class="fas fa-brain me-2" style="color:var(--violet, #a78bfa);"></i>Market Intelligence</h1>
+        <div class="sub">Haber kalitesi · sosyal momentum · hype/risk · event takvimi — LLM (Ollama) destekli</div>
+    </div>
+    <div class="d-flex gap-2">
+        <form class="topbar__search" style="flex-basis:230px;" onsubmit="miLookup(event)">
+            <i class="fas fa-magnifying-glass"></i>
+            <input id="miSym" type="text" placeholder="Sembol analiz et (BTC...)" autocomplete="off">
+        </form>
+        <button class="btn btn-ghost" onclick="miRefreshAll()"><i class="fas fa-rotate me-1"></i>Yenile</button>
+    </div>
+</div>
+
+<!-- Durum KPI'ları -->
+<div class="row g-3 mb-3">
+    <div class="col-6 col-xl-3"><div class="kpi">
+        <div class="kpi__label"><i class="fas fa-robot"></i> Ollama (LLM)</div>
+        <div class="kpi__value" id="miOllama" style="font-size:18px;">—</div>
+        <div class="kpi__delta dim" id="miModel">—</div>
+    </div></div>
+    <div class="col-6 col-xl-3"><div class="kpi">
+        <div class="kpi__label"><i class="fas fa-rss"></i> Aktif Kaynak</div>
+        <div class="kpi__value" id="miSources">—</div>
+        <div class="kpi__delta dim">toplam / toplanabilir</div>
+    </div></div>
+    <div class="col-6 col-xl-3"><div class="kpi">
+        <div class="kpi__label"><i class="fas fa-layer-group"></i> Kapsanan Sembol</div>
+        <div class="kpi__value" id="miCovered">—</div>
+        <div class="kpi__delta dim">snapshot mevcut</div>
+    </div></div>
+    <div class="col-6 col-xl-3"><div class="kpi">
+        <div class="kpi__label"><i class="fas fa-clock"></i> Katman</div>
+        <div class="kpi__value" id="miEnabled" style="font-size:18px;">—</div>
+        <div class="kpi__delta dim" id="miFresh">—</div>
+    </div></div>
+</div>
+
+<div id="miDisabledNote"></div>
+
+<!-- Sembol detay (arama sonrası) -->
+<div id="miDetail" style="display:none;" class="mb-3"></div>
+
+<div class="row g-3">
+    <!-- Snapshot tablosu -->
+    <div class="col-lg-8">
+        <div class="panel">
+            <div class="panel__head"><h2><i class="fas fa-table-list me-2 dim"></i>Sembol Zekâsı (son snapshot)</h2></div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead><tr><th>Sembol</th><th>Haber Kalitesi</th><th>Sosyal</th><th>Hype Risk</th><th>Sentiment</th><th>Haber</th><th>LLM</th><th></th></tr></thead>
+                    <tbody id="miRows"><tr><td colspan="8" class="muted text-center py-4">Yükleniyor…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <!-- Yüksek hype + event -->
+    <div class="col-lg-4">
+        <div class="panel mb-3">
+            <div class="panel__head"><h2><i class="fas fa-fire me-2 warn"></i>Yüksek Hype Riski</h2></div>
+            <div class="panel__body" id="miHighHype"><div class="muted">—</div></div>
+        </div>
+        <div class="panel">
+            <div class="panel__head"><h2><i class="fas fa-calendar-check me-2 dim"></i>Event Takvimi</h2></div>
+            <div class="panel__body" id="miEvents"><div class="muted">—</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Pozitif / Negatif + kaynak sağlığı -->
+<div class="row g-3 mt-0">
+    <div class="col-lg-4"><div class="panel">
+        <div class="panel__head"><h2><i class="fas fa-arrow-trend-up me-2 pos"></i>Pozitif Haberler</h2></div>
+        <div class="panel__body" id="miPositive"><div class="muted">—</div></div>
+    </div></div>
+    <div class="col-lg-4"><div class="panel">
+        <div class="panel__head"><h2><i class="fas fa-arrow-trend-down me-2 neg"></i>Negatif Haberler</h2></div>
+        <div class="panel__body" id="miNegative"><div class="muted">—</div></div>
+    </div></div>
+    <div class="col-lg-4"><div class="panel">
+        <div class="panel__head"><h2><i class="fas fa-shield-halved me-2 dim"></i>Kaynak Güvenilirliği</h2></div>
+        <div class="table-wrap" style="max-height:360px;overflow-y:auto;">
+            <table class="data-table"><thead><tr><th>Tier</th><th>Kaynak</th><th>Rep</th><th></th></tr></thead>
+            <tbody id="miSourcesTbl"><tr><td colspan="4" class="muted text-center py-3">—</td></tr></tbody></table>
+        </div>
+    </div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const $ = (id) => document.getElementById(id);
+    function j(url, opts) { return fetch(url, opts).then(r => r.json()).catch(e => ({success:false, error:String(e)})); }
+    function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function num(v){ return (v==null || isNaN(v)) ? '—' : (+v).toFixed(0); }
+    function sentPill(s){ const m={positive:'green',negative:'red',neutral:'gray'}; return `<span class="pill ${m[s]||'gray'}">${esc(s||'—')}</span>`; }
+    function bar(v, color){ v = Math.max(0, Math.min(100, +v||0)); return `<div class="mi-bar"><span style="width:${v}%;background:${color}"></span></div>`; }
+
+    async function loadOverview(){
+        const r = await j('/api/intelligence/overview');
+        if(!r.success){ $('miRows').innerHTML = `<tr><td colspan="8" class="neg text-center py-4">Hata: ${esc(r.error)}</td></tr>`; return; }
+        const st = r.status || {};
+        const ok = st.ollama && st.ollama.ok;
+        $('miOllama').innerHTML = ok ? '<span class="pos"><i class="fas fa-circle" style="font-size:8px;"></i> Bağlı</span>'
+                                     : `<span class="neg"><i class="fas fa-circle" style="font-size:8px;"></i> ${st.ollama && st.ollama.enabled ? 'Erişilemiyor' : 'Kapalı'}</span>`;
+        $('miModel').textContent = st.model || '—';
+        $('miSources').textContent = (st.sources_collectable ?? '—');
+        $('miModel').title = (st.ollama && st.ollama.error) || '';
+        $('miSources').nextElementSibling.textContent = `${st.sources_total||0} toplam / ${st.sources_collectable||0} toplanabilir`;
+        $('miEnabled').innerHTML = st.enabled ? '<span class="pos">Açık</span>' : '<span class="mi-off">Kapalı</span>';
+        const snaps = r.snapshots || [];
+        $('miCovered').textContent = snaps.length;
+        $('miFresh').textContent = snaps[0] ? new Date(snaps[0].computed_at).toLocaleString('tr-TR') : 'veri yok';
+
+        // Katman kapalı / veri yok bilgisi
+        if(!st.enabled){
+            $('miDisabledNote').innerHTML = `<div class="pa-toast warn" style="position:static;margin-bottom:12px;">
+                Market Intelligence katmanı <b>kapalı</b>. Açmak için .env'de <code>INTELLIGENCE_ENABLED=true</code>
+                ${ok?'':'ve <code>OLLAMA_ENABLED=true</code> (Ollama erişimi) '}ayarlayın.</div>`;
+        } else { $('miDisabledNote').innerHTML=''; }
+
+        // Snapshot tablosu
+        if(!snaps.length){
+            $('miRows').innerHTML = `<tr><td colspan="8" class="muted text-center py-4">Henüz snapshot yok. Yukarıdan bir sembol analiz edin.</td></tr>`;
+        } else {
+            $('miRows').innerHTML = snaps.map(s => `<tr>
+                <td><strong>${esc(s.symbol)}</strong></td>
+                <td style="min-width:90px;">${bar(s.news_quality_score,'var(--green)')}<span class="num dim" style="font-size:11px;">${num(s.news_quality_score)}</span></td>
+                <td class="num">${s.social_momentum_score==null?'<span class="mi-off">—</span>':num(s.social_momentum_score)}</td>
+                <td style="min-width:90px;">${bar(s.hype_risk,'var(--red)')}<span class="num dim" style="font-size:11px;">${num(s.hype_risk)}</span></td>
+                <td>${sentPill(s.news_sentiment)}</td>
+                <td class="num">${s.news_count||0}<span class="muted" style="font-size:11px;"> (${s.independent_news_count||0} bağımsız)</span></td>
+                <td>${s.ollama_used?'<span class="pill blue">LLM</span>':'<span class="pill gray">kural</span>'}</td>
+                <td><button class="icon-btn" onclick="miLookupSym('${esc(s.symbol)}')" title="Detay"><i class="fas fa-eye"></i></button></td>
+            </tr>`).join('');
+        }
+
+        // Yüksek hype
+        $('miHighHype').innerHTML = (r.high_hype||[]).length
+            ? (r.high_hype).map(s => `<div class="d-flex justify-content-between py-1"><span>${esc(s.symbol)}</span><span class="neg num">${num(s.hype_risk)}</span></div>`).join('')
+            : '<div class="muted">Yüksek hype riski yok</div>';
+
+        // Event takvimi (snapshot'lardaki event_summary birleştir)
+        const evs = [];
+        snaps.forEach(s => (s.event_summary||[]).forEach(e => evs.push({sym:s.symbol, ...e})));
+        evs.sort((a,b)=> (b.risk||0)-(a.risk||0));
+        $('miEvents').innerHTML = evs.length
+            ? evs.slice(0,10).map(e => `<div class="d-flex justify-content-between py-1" style="border-bottom:1px solid var(--border-2);">
+                <span><span class="pill ${e.direction<0?'red':(e.direction>0?'green':'gray')}">${esc(e.event_type)}</span> ${esc(e.sym)}</span>
+                <span class="num dim">${e.count}×</span></div>`).join('')
+            : '<div class="muted">Tespit edilen event yok</div>';
+
+        // Pozitif / negatif
+        const renderList = (arr) => arr.length ? arr.map(s=>`<div class="d-flex justify-content-between py-1"><span>${esc(s.symbol)}</span><span class="num dim">kalite ${num(s.news_quality_score)}</span></div>`).join('') : '<div class="muted">—</div>';
+        $('miPositive').innerHTML = renderList(r.positive||[]);
+        $('miNegative').innerHTML = renderList(r.negative||[]);
+    }
+
+    async function loadSources(){
+        const r = await j('/api/intelligence/sources');
+        if(!r.success) return;
+        const rows = (r.sources||[]).sort((a,b)=> a.tier-b.tier || b.reputation-a.reputation);
+        $('miSourcesTbl').innerHTML = rows.map(s => `<tr>
+            <td><span class="mi-src-tier t${s.tier}">${s.tier}</span></td>
+            <td>${esc(s.name)}${s.regional?' <span class="pill gray" style="font-size:9px;">TR</span>':''}</td>
+            <td class="num">${num(s.reputation)}</td>
+            <td>${s.active?'<span class="pos" title="toplanıyor"><i class="fas fa-circle" style="font-size:7px;"></i></span>':'<span class="mi-off" title="altyapı hazır"><i class="fas fa-circle" style="font-size:7px;"></i></span>'}</td>
+        </tr>`).join('');
+    }
+
+    async function miLookupSym(sym){
+        $('miDetail').style.display='block';
+        $('miDetail').innerHTML = `<div class="panel"><div class="panel__body muted">${esc(sym)} yükleniyor…</div></div>`;
+        const r = await j('/api/intelligence/news/' + encodeURIComponent(sym));
+        const snap = r.snapshot; const news = r.news||[];
+        const head = snap ? `
+            <div class="row g-2 mb-2">
+              <div class="col"><div class="kpi"><div class="kpi__label">Haber Kalitesi</div><div class="kpi__value">${num(snap.news_quality_score)}</div></div></div>
+              <div class="col"><div class="kpi"><div class="kpi__label">Hype Risk</div><div class="kpi__value ${(+snap.hype_risk>=70)?'neg':''}">${num(snap.hype_risk)}</div></div></div>
+              <div class="col"><div class="kpi"><div class="kpi__label">Sentiment</div><div class="kpi__value" style="font-size:18px;">${sentPill(snap.news_sentiment)}</div></div></div>
+              <div class="col"><div class="kpi"><div class="kpi__label">Bağımsız Haber</div><div class="kpi__value">${snap.independent_news_count||0}<span class="muted" style="font-size:12px;">/${snap.news_count||0}</span></div></div></div>
+            </div>` : `<div class="pa-toast warn" style="position:static;margin-bottom:8px;">Bu sembol için snapshot yok. "Analiz" ile hesaplayın.</div>`;
+        const newsList = news.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Kaynak</th><th>Başlık</th><th>Zaman</th></tr></thead><tbody>${
+            news.map(n=>`<tr><td><span class="mi-src-tier t${n.source_tier||4}">${n.source_tier||'?'}</span> ${esc(n.source)}</td>
+                <td><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc((n.title||'').slice(0,90))}</a></td>
+                <td class="dim" style="font-size:11px;">${n.published_at?new Date(n.published_at).toLocaleString('tr-TR'):'—'}</td></tr>`).join('')
+        }</tbody></table></div>` : '<div class="muted p-2">Kayıtlı haber yok.</div>';
+        $('miDetail').innerHTML = `<div class="panel"><div class="panel__head">
+            <h2><i class="fas fa-microscope me-2 dim"></i>${esc(sym)} — Market Intelligence</h2>
+            <button class="btn btn-pa btn-sm" onclick="miAnalyze('${esc(sym)}',this)"><i class="fas fa-bolt me-1"></i>Analiz Et</button>
+          </div><div class="panel__body">${head}${newsList}</div></div>`;
+    }
+
+    async function miAnalyze(sym, btn){
+        const o = btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm"></span>';
+        const r = await j('/api/intelligence/refresh/' + encodeURIComponent(sym), {method:'POST'});
+        btn.disabled=false; btn.innerHTML=o;
+        if(r.success){ paToast(`${sym} analiz edildi`, r.snapshot?'ok':'warn'); miLookupSym(sym); loadOverview(); }
+        else paToast('Analiz başarısız: '+esc(r.error), 'err');
+    }
+
+    function miLookup(e){ e.preventDefault(); const v=($('miSym').value||'').trim().toUpperCase(); if(v) miLookupSym(v.includes('/')?v:v+'/USDT'); }
+    function miRefreshAll(){ loadOverview(); loadSources(); }
+
+    document.addEventListener('DOMContentLoaded', () => { miRefreshAll(); setInterval(loadOverview, 45000); });
+</script>
+{% endblock %}

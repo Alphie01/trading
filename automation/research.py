@@ -173,6 +173,32 @@ def whale_snapshot(symbol: str) -> Optional[Dict]:
         return None
 
 
+def market_intel_snapshot(symbol: str) -> Optional[Dict]:
+    """OPSİYONEL market zekâsı (haber/sosyal/LLM). Kapalıysa (default) veya veri yoksa None.
+
+    intelligence.engine.build_snapshot cache'li + best-effort; Ollama/kaynak yoksa graceful skip eder.
+    """
+    try:
+        from .config import AutomationConfig as C
+        if not C.MARKET_INTEL_ENABLED:
+            return None
+        from intelligence.engine import build_snapshot
+        snap = build_snapshot(symbol)
+        if not snap:
+            return None
+        return {
+            "news_quality_score": snap.get("news_quality_score"),
+            "social_momentum_score": snap.get("social_momentum_score"),
+            "hype_risk": snap.get("hype_risk"),
+            "news_risk": snap.get("news_risk"),
+            "news_sentiment": snap.get("news_sentiment"),
+            "event_summary": snap.get("event_summary"),
+        }
+    except Exception as e:
+        print(f"ℹ️ market_intel snapshot atlandı ({symbol}): {e.__class__.__name__}")
+        return None
+
+
 def research_coin(symbol: str, ticker: Dict = None, df=None, fetcher=None,
                   days: int = None) -> Dict:
     """Bir coin için tam araştırma: teknik + (opsiyonel) AI/sentiment/whale snapshot'ları.
@@ -202,4 +228,5 @@ def research_coin(symbol: str, ticker: Dict = None, df=None, fetcher=None,
         "ai": ai_snapshot(df, symbol),
         "sentiment": sentiment_snapshot(symbol),
         "whale": whale_snapshot(symbol),
+        "market_intel": market_intel_snapshot(symbol),
     }

@@ -8,20 +8,29 @@ to prevent Metal plugin crashes and GPU configuration errors.
 
 import os
 import warnings
+import platform
 
-# **CRITICAL: Set TensorFlow environment variables BEFORE importing**
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Reduce TensorFlow logging
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN optimizations
-os.environ['TF_METAL_DEVICE_PLACEMENT'] = '0'  # **DISABLE automatic Metal placement**
-os.environ['TF_DISABLE_MKL'] = '1'  # **DISABLE MKL to avoid conflicts**
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = '1'  # **NEW: Force GPU memory growth**
-os.environ['CUDA_VISIBLE_DEVICES'] = ''  # **NEW: Disable CUDA to force CPU/Metal only**
-os.environ['TF_USE_LEGACY_KERAS'] = 'True'  # **NEW: Use legacy Keras for compatibility**
+# TensorFlow log seviyesi + Keras uyumluluk (her platformda)
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+os.environ['TF_USE_LEGACY_KERAS'] = 'True'  # legacy Keras uyumluluğu (cihazdan bağımsız)
 
-# **NEW: Aggressive Metal prevention**
-os.environ['TF_DISABLE_SEGMENT_REDUCTION_OP'] = '1'
-os.environ['TF_DISABLE_MKL_SMALL_MATRIX_OPT'] = '1'
-os.environ['MLX_METAL_DEBUG'] = '0'  # Disable Metal debugging
+# ── Cihaz seçimi: Linux/NVIDIA'da GPU-ÖNCELİKLİ; macOS'ta Metal-güvenli CPU ─────────────────
+# macOS (Apple Silicon): Metal plugin çökmelerini önlemek için CUDA gizlenir → CPU/Metal-güvenli.
+# Linux/diğer: CUDA_VISIBLE_DEVICES'e DOKUNULMAZ → NVIDIA GPU görünür; varsa GPU, yoksa CPU'ya düşer.
+# Her platformda CPU'ya zorlamak için: TRADING_FORCE_CPU=1
+_IS_DARWIN = platform.system() == 'Darwin'
+_FORCE_CPU = os.environ.get('TRADING_FORCE_CPU', '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+if _IS_DARWIN or _FORCE_CPU:
+    os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+    os.environ['TF_METAL_DEVICE_PLACEMENT'] = '0'
+    os.environ['TF_DISABLE_MKL'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''            # GPU'yu gizle → CPU (Metal-güvenli)
+    os.environ['TF_DISABLE_SEGMENT_REDUCTION_OP'] = '1'
+    os.environ['TF_DISABLE_MKL_SMALL_MATRIX_OPT'] = '1'
+    os.environ['MLX_METAL_DEBUG'] = '0'
+else:
+    os.environ.setdefault('TF_FORCE_GPU_ALLOW_GROWTH', 'true')
 
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)

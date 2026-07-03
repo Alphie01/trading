@@ -166,6 +166,10 @@ class CoinScore(SharedBase):
     ai_prediction_score = Column(Numeric(6, 2))
     sentiment_score = Column(Numeric(6, 2))
     whale_score = Column(Numeric(6, 2))
+    # Market Intelligence bileşenleri (haber kalitesi / sosyal momentum / hype riski)
+    news_quality_score = Column(Numeric(6, 2))
+    social_momentum_score = Column(Numeric(6, 2))
+    hype_risk = Column(Numeric(6, 2))
     recommendation = Column(String(20))  # STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL
     reasons = Column(JSONB)
     warnings = Column(JSONB)
@@ -188,3 +192,96 @@ class AutomationRun(SharedBase):
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     finished_at = Column(DateTime(timezone=True))
     details = Column(JSONB)
+
+
+# ============================================================================ #
+# Market Intelligence — SHARED (haber/sosyal/LLM zekâsı; evren-geneli, tenant'lardan bağımsız)
+# ============================================================================ #
+class IntelligenceSource(SharedBase):
+    """Haber/sosyal kaynak kayıt defteri (katmanlı: tier + reputation + impact_weight)."""
+
+    __tablename__ = "intelligence_sources"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(120), unique=True, nullable=False)
+    # exchange_official | regulator | crypto_news | security | social | regional | event
+    category = Column(String(50))
+    tier = Column(Integer)  # 1 (en güvenilir) .. 4 (sosyal/blog)
+    reputation_score = Column(Numeric(6, 2))  # 0-100
+    impact_weight = Column(Numeric(5, 3))  # 0-1
+    allow_trade_signal_boost = Column(Boolean, server_default="true")
+    regional = Column(Boolean, server_default="false")
+    enabled = Column(Boolean, server_default="true")
+    last_collected_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class NewsItem(SharedBase):
+    """Toplanan (deduplike) haber öğesi. Prod'da sahte veri YOK (data_source ile etiketli)."""
+
+    __tablename__ = "news_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(120))
+    source_tier = Column(Integer)
+    symbol = Column(String(30))  # ilişkili sembol (varsa; global haber için None)
+    title = Column(Text, nullable=False)
+    url = Column(Text)
+    published_at = Column(DateTime(timezone=True))
+    content_hash = Column(String(64), unique=True, nullable=False)
+    duplicate_group_id = Column(String(64))
+    raw_sentiment = Column(Numeric(6, 3))  # FinBERT/ensemble baseline (-1..1)
+    data_source = Column(String(40))  # 'rss' | 'api' | 'reddit' ... (demo_mock yalnız DEMO_MODE)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_news_items_symbol_time", "symbol", "published_at"),)
+
+
+class NewsAnalysisResult(SharedBase):
+    """Bir haber öğesinin LLM (Ollama) + kural tabanlı analiz sonucu."""
+
+    __tablename__ = "news_analysis_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    news_item_id = Column(Integer, ForeignKey("news_items.id"))
+    symbol = Column(String(30))
+    sentiment = Column(String(20))  # positive | neutral | negative
+    sentiment_score = Column(Numeric(6, 2))  # 0-100
+    quality_score = Column(Numeric(6, 2))
+    relevance_score = Column(Numeric(6, 2))
+    impact_score = Column(Numeric(6, 2))
+    freshness_score = Column(Numeric(6, 2))
+    hype_score = Column(Numeric(6, 2))
+    risk_score = Column(Numeric(6, 2))
+    event_type = Column(String(40))  # listing|delisting|regulatory|hack|partnership|token_unlock|upgrade|general|unknown
+    ollama_model = Column(String(80))
+    ollama_confidence = Column(Numeric(5, 4))
+    analysis_json = Column(JSONB)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_news_analysis_symbol_time", "symbol", "created_at"),)
+
+
+class MarketIntelligenceSnapshot(SharedBase):
+    """Sembol başına toplu market zekâsı özeti — scoring + dashboard bunu okur."""
+
+    __tablename__ = "market_intelligence_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(30), nullable=False)
+    news_quality_score = Column(Numeric(6, 2))  # 0-100
+    social_momentum_score = Column(Numeric(6, 2))  # 0-100 (Faz 5'e kadar None)
+    hype_risk = Column(Numeric(6, 2))  # 0-100
+    news_sentiment = Column(String(20))
+    news_count = Column(Integer, server_default="0")
+    independent_news_count = Column(Integer, server_default="0")  # dedup sonrası
+    duplicate_count = Column(Integer, server_default="0")
+    event_summary = Column(JSONB)
+    top_news = Column(JSONB)
+    source_breakdown = Column(JSONB)
+    ollama_used = Column(Boolean, server_default="false")
+    warnings = Column(JSONB)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_mis_symbol_time", "symbol", "computed_at"),)

@@ -2333,6 +2333,83 @@ def api_train_coin():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ─── Market Intelligence API (Faz 4 — minimal; tam API + dashboard Faz 7) ────────────────
+@app.route('/api/intelligence/status')
+@login_required
+def api_intelligence_status():
+    """Katman durumu: Ollama health + kaynak sayıları (graceful; Ollama yoksa ok=false)."""
+    try:
+        from intelligence.engine import get_status
+        return jsonify({'success': True, 'status': get_status()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/intelligence/news/<symbol>')
+@login_required
+def api_intelligence_news(symbol):
+    """Bir sembol için son snapshot + son haber öğeleri (DB'den; hesaplama yapmaz)."""
+    try:
+        from intelligence.repository import get_latest_news, get_snapshot
+        sym = symbol.upper()
+        return jsonify({'success': True, 'symbol': sym,
+                        'snapshot': get_snapshot(sym), 'news': get_latest_news(sym, 30)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/intelligence/refresh/<symbol>', methods=['POST'])
+@login_required
+def api_intelligence_refresh(symbol):
+    """Bir sembol için market zekâsını yeniden hesapla (collect+LLM+persist). Ağır → istek üzerine."""
+    try:
+        from intelligence.engine import build_snapshot
+        sym = symbol.upper()
+        snap = build_snapshot(sym)
+        if snap is None:
+            return jsonify({'success': True, 'symbol': sym, 'snapshot': None,
+                            'message': 'Veri yok / katman kapalı (INTELLIGENCE_ENABLED?)'})
+        return jsonify({'success': True, 'symbol': sym, 'snapshot': snap})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/market-intelligence')
+@login_required
+def market_intelligence():
+    """Market Intelligence dashboard (haber kalitesi / hype / event / kaynak sağlığı / Ollama)."""
+    return render_template('market_intelligence.html')
+
+
+@app.route('/api/intelligence/sources')
+@login_required
+def api_intelligence_sources():
+    """Kaynak registry'si (katmanlı source health)."""
+    try:
+        from intelligence.repository import get_sources
+        return jsonify({'success': True, 'sources': get_sources()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/intelligence/overview')
+@login_required
+def api_intelligence_overview():
+    """Piyasa geneli: durum + son snapshot'lar + türetilmiş listeler (yüksek hype / pozitif / negatif)."""
+    try:
+        from intelligence.engine import get_status
+        from intelligence.repository import get_recent_snapshots
+        snaps = get_recent_snapshots(60)
+        high_hype = sorted([s for s in snaps if s.get('hype_risk') is not None],
+                           key=lambda s: s['hype_risk'], reverse=True)[:8]
+        positive = [s for s in snaps if s.get('news_sentiment') == 'positive'][:8]
+        negative = [s for s in snaps if s.get('news_sentiment') == 'negative'][:8]
+        return jsonify({'success': True, 'status': get_status(), 'snapshots': snaps,
+                        'high_hype': high_hype, 'positive': positive, 'negative': negative})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/test_news_api')
 @login_required
 def test_news_api():

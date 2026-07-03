@@ -93,9 +93,16 @@
                 <div id="warnings"><span class="empty">—</span></div>
             </div>
         </div>
-        <div class="panel">
+        <div class="panel mb-3">
             <div class="panel__head"><h2><i class="fas fa-database me-2 dim"></i>Piyasa Verisi</h2></div>
             <div class="panel__body" id="market"></div>
+        </div>
+        <div class="panel">
+            <div class="panel__head">
+                <h2><i class="fas fa-brain me-2 dim"></i>Market Intelligence</h2>
+                <a class="icon-btn" href="{{ url_for('market_intelligence') }}" title="Market Intelligence"><i class="fas fa-up-right-from-square"></i></a>
+            </div>
+            <div class="panel__body" id="miPanel"><div class="empty">—</div></div>
         </div>
     </div>
 </div>
@@ -146,6 +153,8 @@ function render(d) {
             ['AI (LSTM/DQN)', sc.ai_prediction_score],
             ['Haber Sentiment', sc.sentiment_score],
             ['Whale Aktivite', sc.whale_score],
+            ['Haber Kalitesi (LLM)', sc.news_quality_score],
+            ['Sosyal Momentum', sc.social_momentum_score],
         ];
         $('components').innerHTML = comps.map(([n,v]) => v==null
             ? `<div class="comp"><span class="cn">${n}</span><span class="bar"></span><span class="pending">yok</span></div>`
@@ -195,7 +204,33 @@ function drawHist(hist) {
     else { histChart = new Chart($('histChart'), cfg); }
 }
 
-async function load() { render(await j('/api/automation/coin/' + encodeURIComponent(SYMBOL))); }
+async function loadIntel() {
+    const r = await j('/api/intelligence/news/' + encodeURIComponent(SYMBOL));
+    const snap = r && r.snapshot; const news = (r && r.news) || [];
+    if (!snap && !news.length) {
+        $('miPanel').innerHTML = '<div class="empty">Market Intelligence verisi yok (katman kapalı olabilir: INTELLIGENCE_ENABLED).</div>';
+        return;
+    }
+    const kv = (k, v, col) => `<div class="kv"><span class="k">${k}</span><span class="v" ${col?`style="color:${col}"`:''}>${v}</span></div>`;
+    let html = '';
+    if (snap) {
+        const sc = snap.news_sentiment==='positive'?'var(--green)':(snap.news_sentiment==='negative'?'var(--red)':'var(--txt-dim)');
+        html += kv('Haber Kalitesi', fmt(snap.news_quality_score));
+        html += kv('Hype Riski', fmt(snap.hype_risk), (snap.hype_risk>=70?'var(--red)':''));
+        html += kv('Sentiment', snap.news_sentiment||'—', sc);
+        html += kv('Bağımsız Haber', (snap.independent_news_count||0)+' / '+(snap.news_count||0));
+        html += kv('LLM', snap.ollama_used?'Ollama':'kural tabanlı');
+    }
+    if (news.length) {
+        html += '<div class="mono" style="font-size:10px;letter-spacing:2px;color:var(--txt-faint);margin:12px 0 6px;">SON HABERLER</div>';
+        html += news.slice(0,6).map(n => `<div style="padding:6px 0;border-top:1px solid var(--line);font-size:12px;">
+            <a href="${n.url||'#'}" target="_blank" rel="noopener" style="color:var(--txt-dim);">${(n.title||'').slice(0,80)}</a>
+            <div style="color:var(--txt-faint);font-size:10px;">${n.source||''}</div></div>`).join('');
+    }
+    $('miPanel').innerHTML = html || '<div class="empty">—</div>';
+}
+
+async function load() { render(await j('/api/automation/coin/' + encodeURIComponent(SYMBOL))); loadIntel(); }
 
 $('btnResearch').addEventListener('click', async () => {
     const b = $('btnResearch'); b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Araştırılıyor';

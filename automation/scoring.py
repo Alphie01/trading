@@ -128,6 +128,16 @@ def score_full(research: Dict) -> Dict:
     ai_score = ai.get("ai_prediction_score") if ai else None
     sent_score = sent.get("sentiment_score") if sent else None
     whale_score = whale.get("whale_score") if whale else None
+    # Market Intelligence bileşenleri (opsiyonel; kapalıysa None → skora katılmaz)
+    mi = research.get("market_intel") or {}
+    news_quality = mi.get("news_quality_score")
+    social_momentum = mi.get("social_momentum_score")
+    # Confirmation (hafif): düşük likiditede haber/sosyal katkısı kısılır (pump/manipülasyon savunması)
+    if vol_liq is not None and vol_liq < 40:
+        if news_quality is not None:
+            news_quality = float(news_quality) * 0.5
+        if social_momentum is not None:
+            social_momentum = float(social_momentum) * 0.5
 
     components = [
         (C.W_VOLUME_LIQUIDITY, vol_liq),
@@ -135,6 +145,8 @@ def score_full(research: Dict) -> Dict:
         (C.W_AI_PREDICTION, ai_score),
         (C.W_SENTIMENT, sent_score),
         (C.W_WHALE, whale_score),
+        (C.W_NEWS_QUALITY, news_quality),
+        (C.W_SOCIAL_MOMENTUM, social_momentum),
     ]
     present = [(w, v) for (w, v) in components if v is not None]
     total_w = sum(w for w, _ in present)
@@ -152,12 +164,27 @@ def score_full(research: Dict) -> Dict:
         risk += 5; missing += 1; warnings.append("sentiment_unavailable")
     if whale_score is None:
         risk += 5; missing += 1; warnings.append("whale_unavailable")
+    if news_quality is None and social_momentum is None:
+        risk += 5; missing += 1; warnings.append("market_intel_unavailable")
+    # Market Intelligence risk katkıları (hype + negatif/hack/regülasyon haberleri)
+    hype_risk = mi.get("hype_risk")
+    if hype_risk is not None:
+        risk += float(hype_risk) * 0.15
+        if float(hype_risk) >= 70:
+            warnings.append("high_hype_risk")
+    news_risk = mi.get("news_risk")
+    if news_risk is not None:
+        risk += float(news_risk) * 0.25
+        if float(news_risk) >= 70:
+            warnings.append("high_news_risk")
     if vol_liq is not None and vol_liq < 40:
         risk += 15; warnings.append("low_liquidity_risk")
     risk = _clamp(risk)
 
-    # Confidence: bileşen kapsamı + AI confidence
-    coverage = len(present) / 5.0
+    # Confidence: bileşen kapsamı + AI confidence.
+    # Çekirdek 5 bileşene göre normalize + 1.0'a clamp → intel KAPALIYKEN eski davranış korunur,
+    # intel açıkken ek sinyaller confidence'ı düşürmez (kapsam artışı ödüllendirilir, cezalandırmaz).
+    coverage = min(1.0, len(present) / 5.0)
     ai_conf = float(ai.get("ai_confidence", 0)) if ai else 0.0
     confidence = round(_clamp(0.2 + 0.5 * coverage + 0.3 * ai_conf, 0.0, 1.0), 4)
 
@@ -183,6 +210,9 @@ def score_full(research: Dict) -> Dict:
         "ai_prediction_score": ai_score,
         "sentiment_score": sent_score,
         "whale_score": whale_score,
+        "news_quality_score": round(news_quality, 2) if news_quality is not None else None,
+        "social_momentum_score": round(social_momentum, 2) if social_momentum is not None else None,
+        "hype_risk": round(float(hype_risk), 2) if mi.get("hype_risk") is not None else None,
         "recommendation": recommendation,
         "reasons": sorted(set(reasons)),
         "warnings": sorted(set(warnings)),
