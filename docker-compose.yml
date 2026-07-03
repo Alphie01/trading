@@ -57,5 +57,22 @@ services:
   #   build: { context: ., dockerfile: docker/Dockerfile.ai }
   #   ports: ["8000:8000"]
 
+  # Cloudflare Tunnel — web servisini (web:5000) internete açık bir hostname'e bağlar.
+  # GÜVENLİK: token bir SECRET'tır → yalnız .env'de (gitignore'lu) tutulur, ASLA compose'a gömülmez.
+  #   cloudflared, TUNNEL_TOKEN env'ini otomatik okur (token argv'de görünmez).
+  #   Public hostname → http://web:5000 eşlemesi Cloudflare Zero Trust panelinden yapılır.
+  # Opsiyonel servis (profil): `docker compose --profile tunnel up`
+  #   veya .env'de COMPOSE_PROFILES=tunnel ile düz `docker compose up` içinde de açılır.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: trading-cloudflared
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN .env icinde tanimli olmali}
+    depends_on:
+      - web
+
 volumes:
   postgres_data:
