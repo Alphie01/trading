@@ -1,140 +1,109 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📡 {{ symbol }} — Coin Araştırma</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <style>
-        :root {
-            --bg:#070b12; --panel:#0f1522; --panel-2:#131b2b; --line:rgba(120,160,220,.12);
-            --line-strong:rgba(120,160,220,.28); --txt:#d7e2f4; --txt-dim:#7d8ba6; --txt-faint:#4a5670;
-            --cyan:#22d3ee; --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
-        }
-        *{box-sizing:border-box;} html,body{margin:0;padding:0;}
-        body{background:var(--bg); color:var(--txt); font-family:'Chakra Petch',system-ui,sans-serif;
-             min-height:100vh; position:relative; overflow-x:hidden; letter-spacing:.2px;}
-        body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
-            background:radial-gradient(1100px 700px at 82% -10%,rgba(34,211,238,.10),transparent 60%),
-                       linear-gradient(var(--line) 1px,transparent 1px) 0 0/46px 46px,
-                       linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/46px 46px;
-            mask-image:radial-gradient(circle at 50% 30%,#000 55%,transparent 100%);opacity:.55;}
-        .shell{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:22px 26px 60px;}
-        .mono{font-family:'JetBrains Mono',monospace;}
-        a.back{color:var(--txt-dim);text-decoration:none;font-size:12.5px;letter-spacing:.5px;}
-        a.back:hover{color:var(--cyan);}
-        .head{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:18px 22px;margin-top:10px;
-              border:1px solid var(--line);border-radius:16px;
-              background:linear-gradient(180deg,rgba(19,27,43,.9),rgba(15,21,34,.7));}
-        .head h1{font-size:30px;font-weight:700;margin:0;letter-spacing:1px;
-                 background:linear-gradient(90deg,#eaf3ff,var(--cyan));-webkit-background-clip:text;
-                 background-clip:text;-webkit-text-fill-color:transparent;}
-        .price{font-family:'JetBrains Mono',monospace;font-size:22px;color:#fff;}
-        .rec{font-family:'JetBrains Mono',monospace;font-weight:700;padding:8px 14px;border-radius:9px;letter-spacing:1px;}
-        .rec.BUY,.rec.STRONG_BUY{color:#052e1a;background:var(--green);} .rec.SELL,.rec.STRONG_SELL{color:#2b0909;background:var(--red);}
-        .rec.HOLD{color:var(--txt-dim);background:rgba(125,139,166,.15);}
-        .stat{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;
-              padding:5px 10px;border-radius:6px;border:1px solid var(--line-strong);}
-        .stat.hot_candidate,.stat.trade_candidate{color:var(--red);border-color:rgba(248,113,113,.4);}
-        .stat.watchlist{color:var(--amber);border-color:rgba(251,191,36,.4);}
-        .stat.research_queue{color:var(--cyan);} .stat.rejected,.stat.cooldown{color:var(--txt-faint);}
-        .spacer{flex:1;}
-        .btn-radar{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;
-                   border-radius:10px;padding:10px 16px;border:1px solid rgba(34,211,238,.5);color:#d6fbff;
-                   background:linear-gradient(180deg,rgba(34,211,238,.18),rgba(34,211,238,.06));cursor:pointer;transition:.18s;}
-        .btn-radar:hover{box-shadow:0 0 24px -6px rgba(34,211,238,.4);transform:translateY(-1px);}
-        .btn-radar:disabled{opacity:.5;cursor:wait;}
-        .row2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:16px;}
-        .gauge{border:1px solid var(--line);border-radius:16px;padding:20px;text-align:center;
-               background:linear-gradient(180deg,var(--panel-2),var(--panel));}
-        .gauge .lbl{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--txt-faint);}
-        .gauge .val{font-family:'JetBrains Mono',monospace;font-size:44px;font-weight:700;line-height:1.1;margin-top:8px;}
-        .gauge .ring{height:7px;border-radius:5px;background:rgba(255,255,255,.06);margin-top:12px;overflow:hidden;}
-        .gauge .ring>span{display:block;height:100%;border-radius:5px;}
-        .grid2{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-top:16px;}
-        .panel{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,rgba(19,27,43,.55),rgba(15,21,34,.85));}
-        .panel-h{padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700;font-size:14px;letter-spacing:1px;}
-        .panel-h i{color:var(--cyan);margin-right:8px;}
-        .panel-b{padding:14px 18px;}
-        .comp{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line);}
-        .comp:first-child{border-top:none;}
-        .comp .cn{width:150px;color:var(--txt-dim);font-size:12.5px;}
-        .comp .bar{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden;}
-        .comp .bar>span{display:block;height:100%;border-radius:4px;}
-        .comp .cv{width:60px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;}
-        .comp .pending{width:60px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--txt-faint);}
-        .tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 10px;border-radius:7px;
-             margin:0 6px 6px 0;border:1px solid var(--line-strong);background:var(--panel);}
-        .tag.warn{color:var(--amber);border-color:rgba(251,191,36,.3);}
-        .tag.reason{color:var(--green);border-color:rgba(52,211,153,.3);}
-        .kv{display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid var(--line);font-size:12.5px;}
-        .kv:first-child{border-top:none;} .kv .k{color:var(--txt-dim);} .kv .v{font-family:'JetBrains Mono',monospace;}
-        .next{margin-top:16px;border:1px solid rgba(34,211,238,.25);background:rgba(34,211,238,.05);
-              border-radius:14px;padding:16px 20px;font-size:14px;} .next i{color:var(--cyan);margin-right:8px;}
-        .chart-wrap{padding:10px 16px 18px;height:240px;position:relative;}
-        .empty{color:var(--txt-faint);font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:14px 0;}
-        @media(max-width:900px){.row2,.grid2{grid-template-columns:1fr;}}
-    </style>
-</head>
-<body>
-<div class="shell">
-    <a class="back" href="{{ url_for('automation_dashboard') }}"><i class="fas fa-arrow-left"></i> Market Radar</a>
+{% extends "base.html" %}
+{% block title %}{{ symbol }} · Coin Araştırma · Paera Terminal{% endblock %}
 
-    <div class="head">
-        <div>
-            <h1 id="sym">{{ symbol }}</h1>
-            <div class="mono" style="color:var(--txt-faint);font-size:11px;letter-spacing:2px;">COIN ARAŞTIRMA RAPORU</div>
-        </div>
+{% block head %}
+<style>
+    /* Kokpit renk değişkenleri → Binance paletine repoint (JS inline stiller bu değişkenleri kullanıyor) */
+    :root {
+        --bg:#0B0E11; --panel:#111827; --panel-2:#151A23; --line:#263241; --line-strong:#33465c;
+        --txt:#F5F7FA; --txt-dim:#9CA3AF; --txt-faint:#6B7280;
+        --cyan:#3B82F6; --green:#0ECB81; --amber:#F0B90B; --red:#F6465D; --violet:#8B5CF6;
+    }
+    a.back { color:var(--txt-dim); text-decoration:none; font-size:12.5px; letter-spacing:.5px; }
+    a.back:hover { color:var(--cyan); }
+    .price { font-family:'IBM Plex Mono', monospace; font-size:22px; color:var(--txt); }
+    .rec { font-family:'IBM Plex Mono', monospace; font-weight:700; padding:8px 14px; border-radius:9px; letter-spacing:1px; }
+    .rec.BUY, .rec.STRONG_BUY { color:#052e1a; background:var(--green); }
+    .rec.SELL, .rec.STRONG_SELL { color:#2b0909; background:var(--red); }
+    .rec.HOLD { color:var(--txt-dim); background:rgba(156,163,175,.15); }
+    .stat { font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase;
+        padding:5px 10px; border-radius:6px; border:1px solid var(--line-strong); }
+    .stat.hot_candidate, .stat.trade_candidate { color:var(--red); border-color:rgba(246,70,93,.4); }
+    .stat.watchlist { color:var(--amber); border-color:rgba(240,185,11,.4); }
+    .stat.research_queue { color:var(--cyan); }
+    .stat.rejected, .stat.cooldown { color:var(--txt-faint); }
+    .gauge { border:1px solid var(--line); border-radius:16px; padding:20px; text-align:center;
+        background:linear-gradient(180deg,var(--panel-2),var(--panel)); }
+    .gauge .lbl { font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--txt-faint); }
+    .gauge .val { font-family:'IBM Plex Mono', monospace; font-size:44px; font-weight:700; line-height:1.1; margin-top:8px; }
+    .gauge .ring { height:7px; border-radius:5px; background:rgba(255,255,255,.06); margin-top:12px; overflow:hidden; }
+    .gauge .ring>span { display:block; height:100%; border-radius:5px; }
+    .comp { display:flex; align-items:center; gap:12px; padding:9px 0; border-top:1px solid var(--line); }
+    .comp:first-child { border-top:none; }
+    .comp .cn { width:150px; color:var(--txt-dim); font-size:12.5px; }
+    .comp .bar { flex:1; height:6px; border-radius:4px; background:rgba(255,255,255,.06); overflow:hidden; }
+    .comp .bar>span { display:block; height:100%; border-radius:4px; }
+    .comp .cv { width:60px; text-align:right; font-family:'IBM Plex Mono', monospace; font-size:12.5px; }
+    .comp .pending { width:60px; text-align:right; font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:var(--txt-faint); }
+    .tag { display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:11px; padding:5px 10px; border-radius:7px;
+        margin:0 6px 6px 0; border:1px solid var(--line-strong); background:var(--panel); }
+    .tag.warn { color:var(--amber); border-color:rgba(240,185,11,.3); }
+    .tag.reason { color:var(--green); border-color:rgba(14,203,129,.3); }
+    .kv { display:flex; justify-content:space-between; padding:9px 0; border-top:1px solid var(--line); font-size:12.5px; }
+    .kv:first-child { border-top:none; } .kv .k { color:var(--txt-dim); } .kv .v { font-family:'IBM Plex Mono', monospace; }
+    .next { margin-top:16px; border:1px solid rgba(59,130,246,.25); background:rgba(59,130,246,.05);
+        border-radius:14px; padding:16px 20px; font-size:14px; } .next i { color:var(--cyan); margin-right:8px; }
+    .chart-wrap { padding:10px 16px 18px; height:240px; position:relative; }
+    .empty { color:var(--txt-faint); font-family:'IBM Plex Mono', monospace; font-size:12.5px; padding:14px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <div class="mb-1"><a class="back" href="{{ url_for('automation_dashboard') }}"><i class="fas fa-arrow-left"></i> Market Scanner</a></div>
+        <h1 id="sym">{{ symbol }}</h1>
+        <div class="sub">Coin araştırma raporu</div>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
         <span id="statusChip" class="stat">—</span>
-        <div class="spacer"></div>
         <div class="price" id="price">—</div>
         <span id="recBadge" class="rec HOLD">—</span>
-        <button id="btnResearch" class="btn-radar"><i class="fas fa-microscope"></i> Yeniden Araştır</button>
+        <button id="btnResearch" class="btn btn-pa"><i class="fas fa-microscope"></i> Yeniden Araştır</button>
     </div>
-
-    <div class="row2">
-        <div class="gauge"><div class="lbl">Fırsat</div><div class="val" id="gOpp">—</div><div class="ring"><span id="rOpp"></span></div></div>
-        <div class="gauge"><div class="lbl">Risk</div><div class="val" id="gRisk">—</div><div class="ring"><span id="rRisk"></span></div></div>
-        <div class="gauge"><div class="lbl">Güven</div><div class="val" id="gConf">—</div><div class="ring"><span id="rConf"></span></div></div>
-    </div>
-
-    <div class="grid2">
-        <div style="display:flex;flex-direction:column;gap:16px;">
-            <div class="panel">
-                <div class="panel-h"><i class="fas fa-layer-group"></i>Skor Bileşenleri</div>
-                <div class="panel-b" id="components"></div>
-            </div>
-            <div class="panel">
-                <div class="panel-h"><i class="fas fa-chart-line"></i>Tarihsel Skor</div>
-                <div class="chart-wrap"><canvas id="histChart"></canvas></div>
-            </div>
-        </div>
-
-        <div style="display:flex;flex-direction:column;gap:16px;">
-            <div class="panel">
-                <div class="panel-h"><i class="fas fa-magnifying-glass-chart"></i>Neden & Uyarılar</div>
-                <div class="panel-b">
-                    <div class="mono" style="font-size:10px;letter-spacing:2px;color:var(--txt-faint);margin-bottom:8px;">KEŞİF NEDENİ</div>
-                    <div id="discoveryReason" style="font-size:13px;color:var(--txt-dim);margin-bottom:14px;">—</div>
-                    <div class="mono" style="font-size:10px;letter-spacing:2px;color:var(--txt-faint);margin-bottom:8px;">GEREKÇELER</div>
-                    <div id="reasons"><span class="empty">—</span></div>
-                    <div class="mono" style="font-size:10px;letter-spacing:2px;color:var(--txt-faint);margin:14px 0 8px;">UYARILAR</div>
-                    <div id="warnings"><span class="empty">—</span></div>
-                </div>
-            </div>
-            <div class="panel">
-                <div class="panel-h"><i class="fas fa-database"></i>Piyasa Verisi</div>
-                <div class="panel-b" id="market"></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="next" id="nextAction"><i class="fas fa-forward"></i><span>—</span></div>
 </div>
 
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="gauge"><div class="lbl">Fırsat</div><div class="val" id="gOpp">—</div><div class="ring"><span id="rOpp"></span></div></div></div>
+    <div class="col-md-4"><div class="gauge"><div class="lbl">Risk</div><div class="val" id="gRisk">—</div><div class="ring"><span id="rRisk"></span></div></div></div>
+    <div class="col-md-4"><div class="gauge"><div class="lbl">Güven</div><div class="val" id="gConf">—</div><div class="ring"><span id="rConf"></span></div></div></div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="panel mb-3">
+            <div class="panel__head"><h2><i class="fas fa-layer-group me-2 dim"></i>Skor Bileşenleri</h2></div>
+            <div class="panel__body" id="components"></div>
+        </div>
+        <div class="panel">
+            <div class="panel__head"><h2><i class="fas fa-chart-line me-2 dim"></i>Tarihsel Skor</h2></div>
+            <div class="chart-wrap"><canvas id="histChart"></canvas></div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="panel mb-3">
+            <div class="panel__head"><h2><i class="fas fa-magnifying-glass-chart me-2 dim"></i>Neden &amp; Uyarılar</h2></div>
+            <div class="panel__body">
+                <div class="mono" style="font-size:10px;letter-spacing:2px;color:var(--txt-faint);margin-bottom:8px;">KEŞİF NEDENİ</div>
+                <div id="discoveryReason" style="font-size:13px;color:var(--txt-dim);margin-bottom:14px;">—</div>
+                <div class="mono" style="font-size:10px;letter-spacing:2px;color:var(--txt-faint);margin-bottom:8px;">GEREKÇELER</div>
+                <div id="reasons"><span class="empty">—</span></div>
+                <div class="mono" style="font-size:10px;letter-spacing:2px;color:var(--txt-faint);margin:14px 0 8px;">UYARILAR</div>
+                <div id="warnings"><span class="empty">—</span></div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel__head"><h2><i class="fas fa-database me-2 dim"></i>Piyasa Verisi</h2></div>
+            <div class="panel__body" id="market"></div>
+        </div>
+    </div>
+</div>
+
+<div class="next" id="nextAction"><i class="fas fa-forward"></i><span>—</span></div>
+{% endblock %}
+
+{% block scripts %}
 <script>
 const SYMBOL = {{ symbol|tojson }};
 const $ = (id) => document.getElementById(id);
@@ -237,5 +206,4 @@ $('btnResearch').addEventListener('click', async () => {
 
 load();
 </script>
-</body>
-</html>
+{% endblock %}

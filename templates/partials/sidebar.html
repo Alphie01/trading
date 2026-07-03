@@ -1,0 +1,51 @@
+{# Sol sidebar — aktif sayfa request.endpoint ile highlight edilir #}
+{% set ep = request.endpoint %}
+<aside class="sidebar" id="paSidebar">
+    <div class="sidebar__brand">
+        <div class="logo">P</div>
+        <div class="name">PAERA<small>TRADING TERMINAL</small></div>
+    </div>
+
+    <nav class="sidebar__nav">
+        <div class="nav-group-label">Genel</div>
+        <a class="navlink {{ 'active' if ep in ['dashboard','dashboard_alias'] }}" href="{{ url_for('dashboard') }}">
+            <i class="fas fa-gauge-high"></i> Dashboard
+        </a>
+        <a class="navlink {{ 'active' if ep in ['automation_dashboard','automation_coin_detail'] }}" href="{{ url_for('automation_dashboard') }}">
+            <i class="fas fa-satellite-dish"></i> Market Scanner
+        </a>
+        <a class="navlink {{ 'active' if ep in ['simulation_list','simulation_new','simulation_detail'] }}" href="{{ url_for('simulation_list') }}">
+            <i class="fas fa-flask-vial"></i> Simulation
+            <span class="badge-sanal" style="margin-left:auto;">SANAL</span>
+        </a>
+        <a class="navlink {{ 'active' if ep == 'portfolio' }}" href="{{ url_for('portfolio') }}">
+            <i class="fas fa-wallet"></i> Portfolio
+        </a>
+
+        <div class="nav-group-label">Analiz</div>
+        <a class="navlink" href="{{ url_for('signals_alias') }}">
+            <i class="fas fa-bolt"></i> Signals
+        </a>
+        <a class="navlink" href="{{ url_for('watchlist_alias') }}">
+            <i class="fas fa-star"></i> Watchlist
+        </a>
+        <a class="navlink" href="{{ url_for('automation_dashboard') }}">
+            <i class="fas fa-magnifying-glass-chart"></i> Research Queue
+        </a>
+        <a class="navlink" href="{{ url_for('reports_alias') }}">
+            <i class="fas fa-file-invoice"></i> Reports
+        </a>
+
+        <div class="nav-group-label">Sistem</div>
+        <a class="navlink {{ 'active' if ep == 'settings' }}" href="{{ url_for('settings') }}">
+            <i class="fas fa-gear"></i> Settings
+        </a>
+    </nav>
+
+    <div class="sidebar__foot">
+        {% if current_user and current_user.is_authenticated %}
+            <i class="fas fa-circle-user"></i> {{ current_user.username if current_user.username else 'Kullanıcı' }}
+        {% endif %}
+        <div style="margin-top:4px;opacity:.7;">Paera Terminal • v1</div>
+    </div>
+</aside>

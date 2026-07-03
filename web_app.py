@@ -2217,6 +2217,122 @@ def simulation_detail(sid):
     """Simülasyon detay sayfası (sekmeler + grafikler)."""
     return render_template('simulation_detail.html', sim_id=sid)
 
+
+# ─── Nav kısayolları & geriye uyumluluk redirect'leri ────────────────────────────────────
+# Hedef sayfalar zaten @login_required; bu alias'lar yalnız yönlendirir (404 yerine anlamlı gidiş).
+# Watchlist/Signals/Reports bağımsız tam sayfaları sonraki turda; şimdilik mevcut yüzeylere bağlı.
+@app.route('/dashboard')
+def dashboard_alias():
+    """/dashboard → ana dashboard (/) kısayolu."""
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/automation.html')
+def automation_html_alias():
+    return redirect(url_for('automation_dashboard'))
+
+
+@app.route('/simulation.html')
+def simulation_html_alias():
+    return redirect(url_for('simulation_list'))
+
+
+@app.route('/signals')
+def signals_alias():
+    """Sinyaller şimdilik Automation kokpitinde gösteriliyor."""
+    return redirect(url_for('automation_dashboard'))
+
+
+@app.route('/watchlist')
+def watchlist_alias():
+    """Watchlist şimdilik Automation kokpitinde gösteriliyor."""
+    return redirect(url_for('automation_dashboard'))
+
+
+@app.route('/reports')
+def reports_alias():
+    """Raporlar şimdilik Simülasyon detay sekmelerinde gösteriliyor."""
+    return redirect(url_for('simulation_list'))
+
+
+@app.route('/api/train_coin', methods=['GET', 'POST'])
+def api_train_coin():
+    """Coin araştırma/eğitim API'si.
+
+    GET  → kullanım (usage) bilgisi (public; sır içermez).
+    POST → JSON gövde ile eğitimi arka planda başlatır (auth zorunlu). Geriye uyum için
+           `symbol` | `coin` | `coin_symbol` alanlarından herhangi biri + opsiyonel `force` kabul edilir.
+    """
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'endpoint': '/api/train_coin',
+            'method': 'POST',
+            'content_type': 'application/json',
+            'required_body': {'symbol': 'BTC/USDT'},
+            'example': {'symbol': 'BTC/USDT', 'force': False}
+        })
+
+    # POST — eğitim tetikler → auth zorunlu
+    if not current_user.is_authenticated:
+        return jsonify({'success': False, 'error': 'Yetkisiz. Lütfen giriş yapın.'}), 401
+
+    # JSON gövde zorunlu (Content-Type application/json)
+    if request.is_json:
+        data = request.get_json(silent=True)
+    else:
+        data = request.get_json(force=True, silent=True)
+    if data is None:
+        return jsonify({
+            'success': False,
+            'error': 'Request must be JSON. Content-Type should be application/json'
+        }), 415
+
+    # Geriye uyum: symbol | coin | coin_symbol; "BTC/USDT" | "BTCUSDT" → "BTC"
+    raw = str(data.get('symbol') or data.get('coin') or data.get('coin_symbol') or '').strip().upper()
+    symbol = raw.split('/')[0].strip()
+    if symbol.endswith('USDT') and len(symbol) > 4:
+        symbol = symbol[:-4]
+    force = bool(data.get('force', False))
+
+    if not symbol:
+        return jsonify({'success': False, 'error': 'Coin sembolü gerekli (symbol)'}), 400
+
+    try:
+        if not data_fetcher.validate_symbol(symbol):
+            return jsonify({'success': False, 'error': f'{symbol} geçerli bir sembol değil'}), 400
+
+        # İzleme listesine ekle (idempotent) + haftalık schedule'a al
+        try:
+            db.add_coin(symbol, symbol)
+            from training_scheduler import get_scheduler
+            get_scheduler().add_coin_to_schedule(symbol)
+        except Exception as _e:
+            logger.warning(f"train_coin: coin ekleme/scheduler uyarısı ({symbol}): {_e}")
+
+        # Eğitimi arka planda başlat (/add_coin ile aynı desen)
+        def _bg_train():
+            try:
+                from comprehensive_trainer import ComprehensiveTrainer
+                logger.info(f"🔥 API train_coin: {symbol} eğitimi başlıyor (force={force})...")
+                result = ComprehensiveTrainer().train_coin_sync(symbol, is_fine_tune=force)
+                socketio.emit('comprehensive_training_complete', {
+                    'coin': symbol,
+                    'success': bool(result.get('success')) if isinstance(result, dict) else False,
+                    'message': f'{symbol} eğitimi tamamlandı',
+                    'timestamp': datetime.now().isoformat()
+                })
+            except Exception as te:
+                logger.error(f"API train_coin arka plan hatası ({symbol}): {te}")
+                socketio.emit('analysis_error', {'coin': symbol, 'error': str(te)})
+
+        threading.Thread(target=_bg_train, daemon=True).start()
+
+        return jsonify({'success': True, 'message': 'Eğitim başlatıldı', 'symbol': symbol})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/test_news_api')
 @login_required
 def test_news_api():

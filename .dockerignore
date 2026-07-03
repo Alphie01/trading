@@ -2,10 +2,14 @@
 **/__pycache__/
 **/*.pyc
 **/.pytest_cache/
+trading_env/
 **/venv/
 **/env/
 **/.venv/
 **/*.egg-info/
+
+# Araç/geçici çıktılar
+.playwright-mcp/
 
 # Model artefaktları (büyük, çalışma anında/mount ile)
 model_cache/

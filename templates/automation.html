@@ -1,281 +1,193 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📡 Market Radar — Otomasyon Kokpiti</title>
+{% extends "base.html" %}
+{% block title %}Market Scanner · Paera Terminal{% endblock %}
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% block head %}
+<style>
+    /* Kokpit renk değişkenleri → Binance paletine repoint (JS inline stiller bu değişkenleri kullanıyor) */
+    :root {
+        --bg:          #0B0E11;
+        --panel:       #111827;
+        --panel-2:     #151A23;
+        --line:        #263241;
+        --line-strong: #33465c;
+        --txt:         #F5F7FA;
+        --txt-dim:     #9CA3AF;
+        --txt-faint:   #6B7280;
+        --cyan:        #3B82F6;
+        --green:       #0ECB81;
+        --amber:       #F0B90B;
+        --red:         #F6465D;
+        --violet:      #8B5CF6;
+        --glow-cyan:   rgba(59,130,246,0.35);
+    }
 
-    <style>
-        :root {
-            --bg: #070b12;
-            --panel: #0f1522;
-            --panel-2: #131b2b;
-            --line: rgba(120, 160, 220, 0.12);
-            --line-strong: rgba(120, 160, 220, 0.28);
-            --txt: #d7e2f4;
-            --txt-dim: #7d8ba6;
-            --txt-faint: #4a5670;
-            --cyan: #22d3ee;
-            --green: #34d399;
-            --amber: #fbbf24;
-            --red: #f87171;
-            --violet: #a78bfa;
-            --glow-cyan: rgba(34, 211, 238, 0.35);
-            font-synthesis: none;
-        }
-        * { box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; }
-        body {
-            background: var(--bg);
-            color: var(--txt);
-            font-family: 'Chakra Petch', system-ui, sans-serif;
-            min-height: 100vh;
-            position: relative;
-            overflow-x: hidden;
-            letter-spacing: 0.2px;
-        }
-        /* Radar grid + atmosphere */
-        body::before {
-            content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
-            background:
-                radial-gradient(1200px 700px at 78% -10%, rgba(34,211,238,0.10), transparent 60%),
-                radial-gradient(900px 600px at 8% 110%, rgba(167,139,250,0.10), transparent 55%),
-                linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 46px 46px,
-                linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 46px 46px;
-            mask-image: radial-gradient(circle at 50% 40%, #000 55%, transparent 100%);
-            opacity: 0.6;
-        }
-        /* grain */
-        body::after {
-            content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.035;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        }
-        .shell { position: relative; z-index: 1; max-width: 1520px; margin: 0 auto; padding: 22px 26px 60px; }
+    /* Status pill + chips (JS ile güncelleniyor) — ortak topbar'a sızmasın diye .content altına scope'lu */
+    .content .status-pill { display:inline-flex; align-items:center; gap:8px; padding:7px 13px;
+        border-radius:999px; border:1px solid var(--line-strong); background:var(--panel-2); font-size:12px; font-weight:600; }
+    .content .dot { width:8px; height:8px; border-radius:50%; background:var(--txt-faint); }
+    .content .dot.on { background:var(--green); box-shadow:0 0 0 0 rgba(14,203,129,0.7); animation:pulse 1.8s infinite; }
+    .content .dot.warn { background:var(--amber); }
+    @keyframes pulse { 70% { box-shadow:0 0 0 7px rgba(14,203,129,0); } 100% { box-shadow:0 0 0 0 rgba(14,203,129,0); } }
 
-        .mono { font-family: 'JetBrains Mono', monospace; }
-        .eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 3px;
-                   text-transform: uppercase; color: var(--txt-faint); }
+    .content .chip { display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border-radius:8px;
+        font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:1px;
+        border:1px solid var(--line-strong); background:var(--panel); text-transform:uppercase; }
+    .content .chip.live { color:var(--red); border-color:rgba(246,70,93,0.4); }
+    .content .chip.testnet { color:var(--cyan); border-color:rgba(59,130,246,0.35); }
+    .content .chip.demo { color:var(--amber); border-color:rgba(240,185,11,0.4); }
 
-        /* ── Top bar ── */
-        .topbar { display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
-                  padding: 16px 20px; border: 1px solid var(--line);
-                  background: linear-gradient(180deg, rgba(19,27,43,0.9), rgba(15,21,34,0.7));
-                  border-radius: 16px; backdrop-filter: blur(6px);
-                  box-shadow: 0 20px 60px -30px #000; }
-        .brand { display: flex; align-items: center; gap: 14px; }
-        .radar-badge { width: 46px; height: 46px; border-radius: 12px; position: relative;
-                       display: grid; place-items: center; flex: 0 0 auto;
-                       background: radial-gradient(circle at 50% 50%, rgba(34,211,238,0.18), transparent 70%);
-                       border: 1px solid var(--line-strong); overflow: hidden; }
-        .radar-badge i { color: var(--cyan); font-size: 18px; z-index: 2; text-shadow: 0 0 12px var(--glow-cyan); }
-        .radar-badge::after { content: ""; position: absolute; inset: -20%;
-                       background: conic-gradient(from 0deg, transparent 0 78%, rgba(34,211,238,0.55) 92%, transparent 100%);
-                       animation: sweep 3.4s linear infinite; }
-        @keyframes sweep { to { transform: rotate(360deg); } }
-        .brand h1 { font-size: 20px; font-weight: 700; margin: 0; line-height: 1;
-                    background: linear-gradient(90deg, #eaf3ff, var(--cyan)); -webkit-background-clip: text;
-                    background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 1px; }
-        .brand .sub { color: var(--txt-faint); font-size: 11px; letter-spacing: 2px; }
+    .eyebrow { font-family:'IBM Plex Mono', monospace; font-size:10.5px; letter-spacing:3px; text-transform:uppercase; color:var(--txt-faint); }
 
-        .status-pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px;
-                       border-radius: 999px; border: 1px solid var(--line-strong);
-                       background: var(--panel-2); font-size: 12px; font-weight: 600; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--txt-faint); }
-        .dot.on { background: var(--green); box-shadow: 0 0 0 0 rgba(52,211,153,0.7); animation: pulse 1.8s infinite; }
-        .dot.warn { background: var(--amber); }
-        @keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); } }
+    /* ── Uyarı bandı ── */
+    .banner { border:1px solid rgba(240,185,11,0.3); background:rgba(240,185,11,0.06); border-radius:12px;
+        padding:12px 16px; color:var(--amber); font-size:13px; display:none; margin-bottom:16px; }
+    .banner i { margin-right:8px; }
 
-        .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 8px;
-                font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1px;
-                border: 1px solid var(--line-strong); background: var(--panel); text-transform: uppercase; }
-        .chip.live { color: var(--red); border-color: rgba(248,113,113,0.4); }
-        .chip.testnet { color: var(--cyan); border-color: rgba(34,211,238,0.35); }
-        .chip.demo { color: var(--amber); border-color: rgba(251,191,36,0.4); }
+    /* Radar tablosu hücreleri (JS üretir) */
+    .sym { font-weight:600; letter-spacing:.3px; }
+    .sym small { color:var(--txt-faint); font-family:'IBM Plex Mono', monospace; font-size:10px; }
+    .bar { height:6px; border-radius:4px; background:rgba(255,255,255,0.06); overflow:hidden; min-width:70px; }
+    .bar > span { display:block; height:100%; border-radius:4px; }
+    .num { font-family:'IBM Plex Mono', monospace; font-size:12.5px; }
+    .stat { font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase;
+        padding:4px 8px; border-radius:6px; border:1px solid transparent; }
+    .stat.hot_candidate { color:var(--red); background:rgba(246,70,93,0.1); border-color:rgba(246,70,93,0.3); }
+    .stat.trade_candidate { color:#fff; background:rgba(246,70,93,0.25); border-color:var(--red); }
+    .stat.watchlist { color:var(--amber); background:rgba(240,185,11,0.1); border-color:rgba(240,185,11,0.3); }
+    .stat.research_queue { color:var(--cyan); background:rgba(59,130,246,0.08); border-color:rgba(59,130,246,0.25); }
+    .stat.discovered { color:var(--txt-dim); background:rgba(156,163,175,0.1); }
+    .stat.rejected, .stat.cooldown { color:var(--txt-faint); background:rgba(107,114,128,0.15); }
 
-        .spacer { flex: 1 1 auto; }
-        .btn-radar { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.5px;
-                     text-transform: uppercase; border-radius: 10px; padding: 10px 16px; border: 1px solid var(--line-strong);
-                     color: var(--txt); background: var(--panel-2); cursor: pointer; transition: all .18s ease;
-                     display: inline-flex; align-items: center; gap: 8px; }
-        .btn-radar:hover { border-color: var(--cyan); color: #fff; box-shadow: 0 0 24px -6px var(--glow-cyan); transform: translateY(-1px); }
-        .btn-radar.primary { background: linear-gradient(180deg, rgba(34,211,238,0.18), rgba(34,211,238,0.06));
-                     border-color: rgba(34,211,238,0.5); color: #d6fbff; }
-        .btn-radar:disabled { opacity: .5; cursor: wait; }
-        .navlink { color: var(--txt-dim); font-size: 12.5px; text-decoration: none; padding: 8px 4px; letter-spacing: .5px; }
-        .navlink:hover { color: var(--cyan); }
+    /* Sinyal / uyarı akışı (JS üretir) */
+    .feed { display:flex; flex-direction:column; }
+    .feed-item { display:flex; gap:12px; padding:12px 16px; border-top:1px solid var(--line); align-items:center; }
+    .feed-item:first-child { border-top:none; }
+    .sig-tag { font-family:'IBM Plex Mono', monospace; font-size:11px; font-weight:700; padding:5px 9px;
+        border-radius:7px; min-width:48px; text-align:center; letter-spacing:1px; }
+    .sig-BUY { color:#052e1a; background:var(--green); }
+    .sig-SELL { color:#2b0909; background:var(--red); }
+    .sig-HOLD { color:var(--txt-dim); background:rgba(156,163,175,0.15); }
+    .feed-item .meta { flex:1; min-width:0; }
+    .feed-item .meta .t { font-weight:600; font-size:13px; }
+    .feed-item .meta .s { font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--txt-faint); }
+    .alert-line { display:flex; gap:11px; padding:11px 16px; border-top:1px solid var(--line); font-size:12.5px; align-items:flex-start; }
+    .alert-line:first-child { border-top:none; }
+    .alert-line .lv { width:7px; height:7px; border-radius:50%; margin-top:6px; flex:0 0 auto; }
+    .lv.critical { background:var(--red); box-shadow:0 0 8px var(--red); }
+    .lv.warning { background:var(--amber); }
+    .lv.info { background:var(--cyan); }
 
-        /* ── Warning banner ── */
-        .banner { margin-top: 16px; border: 1px solid rgba(251,191,36,0.3); background: rgba(251,191,36,0.06);
-                  border-radius: 12px; padding: 12px 16px; color: var(--amber); font-size: 13px; display: none; }
-        .banner i { margin-right: 8px; }
+    .cfg-row { display:flex; justify-content:space-between; padding:10px 16px; border-top:1px solid var(--line); font-size:12.5px; }
+    .cfg-row:first-child { border-top:none; }
+    .cfg-row .k { color:var(--txt-dim); }
+    .cfg-row .v { font-family:'IBM Plex Mono', monospace; color:var(--txt); }
 
-        /* ── KPI strip ── */
-        .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-top: 16px; }
-        .kpi { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; position: relative;
-               background: linear-gradient(180deg, var(--panel-2), var(--panel)); overflow: hidden;
-               opacity: 0; transform: translateY(10px); animation: rise .55s ease forwards; }
-        .kpi::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent, var(--cyan)); opacity: .8; }
-        .kpi .k-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 2px;
-                        text-transform: uppercase; color: var(--txt-faint); }
-        .kpi .k-val { font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 700; line-height: 1.1;
-                      color: #fff; margin-top: 6px; }
-        @keyframes rise { to { opacity: 1; transform: translateY(0); } }
+    .empty { padding:26px 16px; text-align:center; color:var(--txt-faint); font-size:12.5px; font-family:'IBM Plex Mono', monospace; }
+    .chart-wrap { padding:8px 12px 16px; height:220px; position:relative; }
+    .updated { font-family:'IBM Plex Mono', monospace; font-size:10px; color:var(--txt-faint); letter-spacing:1px; }
+</style>
+{% endblock %}
 
-        /* ── Layout ── */
-        .grid { display: grid; grid-template-columns: 1.75fr 1fr; gap: 16px; margin-top: 16px; }
-        .panel { border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, rgba(19,27,43,0.55), rgba(15,21,34,0.85));
-                 opacity: 0; transform: translateY(10px); animation: rise .6s ease forwards; }
-        .panel-h { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-        .panel-h h2 { font-size: 14px; font-weight: 700; margin: 0; letter-spacing: 1px; display: flex; align-items: center; gap: 9px; }
-        .panel-h h2 i { color: var(--cyan); }
-        .panel-b { padding: 6px 6px 8px; }
-
-        /* radar table */
-        table.radar { width: 100%; border-collapse: collapse; }
-        table.radar th { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 1.5px;
-                         text-transform: uppercase; color: var(--txt-faint); text-align: left; padding: 10px 14px; font-weight: 500; }
-        table.radar td { padding: 11px 14px; border-top: 1px solid var(--line); font-size: 13px; vertical-align: middle; }
-        table.radar tbody tr:hover, table.radar tr:hover { background: rgba(34,211,238,0.04); }
-        .sym { font-weight: 600; letter-spacing: .3px; }
-        .sym small { color: var(--txt-faint); font-family: 'JetBrains Mono', monospace; font-size: 10px; }
-        .bar { height: 6px; border-radius: 4px; background: rgba(255,255,255,0.06); overflow: hidden; min-width: 70px; }
-        .bar > span { display: block; height: 100%; border-radius: 4px; }
-        .num { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
-        .stat { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
-                padding: 4px 8px; border-radius: 6px; border: 1px solid transparent; }
-        .stat.hot_candidate { color: var(--red); background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.3); }
-        .stat.trade_candidate { color: #fff; background: rgba(248,113,113,0.25); border-color: var(--red); }
-        .stat.watchlist { color: var(--amber); background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.3); }
-        .stat.research_queue { color: var(--cyan); background: rgba(34,211,238,0.08); border-color: rgba(34,211,238,0.25); }
-        .stat.discovered { color: var(--txt-dim); background: rgba(125,139,166,0.1); }
-        .stat.rejected, .stat.cooldown { color: var(--txt-faint); background: rgba(74,86,112,0.15); }
-
-        /* feed items */
-        .feed { display: flex; flex-direction: column; }
-        .feed-item { display: flex; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); align-items: center; }
-        .feed-item:first-child { border-top: none; }
-        .sig-tag { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; padding: 5px 9px;
-                   border-radius: 7px; min-width: 48px; text-align: center; letter-spacing: 1px; }
-        .sig-BUY { color: #052e1a; background: var(--green); }
-        .sig-SELL { color: #2b0909; background: var(--red); }
-        .sig-HOLD { color: var(--txt-dim); background: rgba(125,139,166,0.15); }
-        .feed-item .meta { flex: 1; min-width: 0; }
-        .feed-item .meta .t { font-weight: 600; font-size: 13px; }
-        .feed-item .meta .s { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--txt-faint); }
-        .alert-line { display: flex; gap: 11px; padding: 11px 16px; border-top: 1px solid var(--line); font-size: 12.5px; align-items: flex-start; }
-        .alert-line:first-child { border-top: none; }
-        .alert-line .lv { width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; flex: 0 0 auto; }
-        .lv.critical { background: var(--red); box-shadow: 0 0 8px var(--red); }
-        .lv.warning { background: var(--amber); }
-        .lv.info { background: var(--cyan); }
-
-        .cfg-row { display: flex; justify-content: space-between; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 12.5px; }
-        .cfg-row:first-child { border-top: none; }
-        .cfg-row .k { color: var(--txt-dim); }
-        .cfg-row .v { font-family: 'JetBrains Mono', monospace; color: var(--txt); }
-
-        .empty { padding: 26px 16px; text-align: center; color: var(--txt-faint); font-size: 12.5px; font-family: 'JetBrains Mono', monospace; }
-        .chart-wrap { padding: 8px 12px 16px; height: 220px; position: relative; }
-        .updated { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--txt-faint); letter-spacing: 1px; }
-
-        @media (max-width: 1080px) {
-            .grid { grid-template-columns: 1fr; }
-            .kpis { grid-template-columns: repeat(2, 1fr); }
-        }
-    </style>
-</head>
-<body>
-<div class="shell">
-
-    <!-- ── TOP BAR ── -->
-    <div class="topbar">
-        <div class="brand">
-            <div class="radar-badge"><i class="fas fa-satellite-dish"></i></div>
-            <div>
-                <h1>MARKET RADAR</h1>
-                <div class="sub">OTOMASYON KOKPİTİ</div>
-            </div>
-        </div>
-
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Market Scanner</h1>
+        <div class="sub">Otomasyon kokpiti — keşif, skorlama, sinyaller ve watchlist</div>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
         <span class="status-pill"><span id="engineDot" class="dot"></span><span id="engineState">DURUM…</span></span>
         <span id="modeChip" class="chip testnet"><i class="fas fa-flask"></i> TESTNET</span>
         <span id="demoChip" class="chip demo" style="display:none;"><i class="fas fa-vial"></i> DEMO</span>
-
-        <div class="spacer"></div>
-
-        <a class="navlink" href="{{ url_for('dashboard') }}"><i class="fas fa-gauge-high"></i> Dashboard</a>
-        <a class="navlink" href="{{ url_for('simulation_list') }}"><i class="fas fa-flask-vial"></i> Paper Trading</a>
-        <a class="navlink" href="{{ url_for('portfolio') }}"><i class="fas fa-chart-pie"></i> Portfolio</a>
-        <a class="navlink" href="{{ url_for('settings') }}"><i class="fas fa-sliders"></i> Ayarlar</a>
-        <button id="btnScan" class="btn-radar"><i class="fas fa-radar"></i> Tara</button>
-        <button id="btnResearch" class="btn-radar primary"><i class="fas fa-microscope"></i> Araştır</button>
+        <button id="btnScan" class="btn btn-ghost"><i class="fas fa-radar"></i> Tara</button>
+        <button id="btnResearch" class="btn btn-pa"><i class="fas fa-microscope"></i> Araştır</button>
     </div>
+</div>
 
-    <div id="banner" class="banner"></div>
+<div id="banner" class="banner"></div>
 
-    <!-- ── KPI STRIP ── -->
-    <div class="kpis">
-        <div class="kpi" style="--accent: var(--cyan); animation-delay:.02s"><div class="k-label">Taranan</div><div id="kScanned" class="k-val">—</div></div>
-        <div class="kpi" style="--accent: var(--violet); animation-delay:.08s"><div class="k-label">Elemeyi Geçen</div><div id="kPassed" class="k-val">—</div></div>
-        <div class="kpi" style="--accent: var(--amber); animation-delay:.14s"><div class="k-label">İzleme Listesi</div><div id="kWatch" class="k-val">—</div></div>
-        <div class="kpi" style="--accent: var(--red); animation-delay:.20s"><div class="k-label">Hot Candidate</div><div id="kHot" class="k-val">—</div></div>
-        <div class="kpi" style="--accent: var(--green); animation-delay:.26s"><div class="k-label">Sinyal</div><div id="kSignals" class="k-val">—</div></div>
-    </div>
-
-    <!-- ── MAIN GRID ── -->
-    <div class="grid">
-        <!-- Left: radar table + scatter -->
-        <div style="display:flex; flex-direction:column; gap:16px;">
-            <div class="panel" style="animation-delay:.1s">
-                <div class="panel-h">
-                    <h2><i class="fas fa-crosshairs"></i> RADAR — Aday Coinler</h2>
-                    <span id="updatedAt" class="updated">—</span>
-                </div>
-                <div class="panel-b" style="overflow-x:auto;">
-                    <table class="radar">
-                        <thead><tr>
-                            <th>Sembol</th><th>Fırsat</th><th>Risk</th><th>Güven</th>
-                            <th>Öneri</th><th>Statü</th>
-                        </tr></thead>
-                        <tbody id="radarBody"><tr><td colspan="6" class="empty">Veri bekleniyor… "Araştır" ile başlatın.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="panel" style="animation-delay:.16s">
-                <div class="panel-h"><h2><i class="fas fa-map-location-dot"></i> Fırsat / Risk Haritası</h2>
-                    <span class="eyebrow">X: fırsat · Y: risk</span></div>
-                <div class="chart-wrap"><canvas id="scatter"></canvas></div>
-            </div>
+<!-- ── KPI STRIP ── -->
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-4 col-xl">
+        <div class="kpi">
+            <div class="kpi__label"><i class="fas fa-satellite-dish"></i> Taranan</div>
+            <div class="kpi__value" id="kScanned">—</div>
         </div>
-
-        <!-- Right: signals / alerts / engine -->
-        <div style="display:flex; flex-direction:column; gap:16px;">
-            <div class="panel" style="animation-delay:.12s">
-                <div class="panel-h"><h2><i class="fas fa-bolt"></i> Sinyaller</h2></div>
-                <div class="panel-b"><div id="signalsFeed" class="feed"><div class="empty">Henüz sinyal yok</div></div></div>
-            </div>
-
-            <div class="panel" style="animation-delay:.18s">
-                <div class="panel-h"><h2><i class="fas fa-triangle-exclamation"></i> Uyarılar</h2></div>
-                <div class="panel-b"><div id="alertsFeed"><div class="empty">Uyarı yok</div></div></div>
-            </div>
-
-            <div class="panel" style="animation-delay:.24s">
-                <div class="panel-h"><h2><i class="fas fa-gears"></i> Motor</h2></div>
-                <div class="panel-b" id="enginePanel"></div>
-            </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="kpi">
+            <div class="kpi__label"><i class="fas fa-filter"></i> Elemeyi Geçen</div>
+            <div class="kpi__value" id="kPassed">—</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="kpi">
+            <div class="kpi__label"><i class="fas fa-eye"></i> İzleme Listesi</div>
+            <div class="kpi__value" id="kWatch">—</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="kpi">
+            <div class="kpi__label"><i class="fas fa-fire"></i> Hot Candidate</div>
+            <div class="kpi__value" id="kHot">—</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="kpi">
+            <div class="kpi__label"><i class="fas fa-bolt"></i> Sinyal</div>
+            <div class="kpi__value" id="kSignals">—</div>
         </div>
     </div>
 </div>
 
+<!-- ── MAIN GRID ── -->
+<div class="row g-3">
+    <!-- Left: radar table + scatter -->
+    <div class="col-lg-8">
+        <div class="panel mb-3">
+            <div class="panel__head">
+                <h2><i class="fas fa-crosshairs me-2 dim"></i>RADAR — Aday Coinler</h2>
+                <span id="updatedAt" class="updated">—</span>
+            </div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead><tr>
+                        <th>Sembol</th><th>Fırsat</th><th>Risk</th><th>Güven</th><th>Öneri</th><th>Statü</th>
+                    </tr></thead>
+                    <tbody id="radarBody"><tr><td colspan="6" class="empty">Veri bekleniyor… "Araştır" ile başlatın.</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel__head">
+                <h2><i class="fas fa-map-location-dot me-2 dim"></i>Fırsat / Risk Haritası</h2>
+                <span class="eyebrow">X: fırsat · Y: risk</span>
+            </div>
+            <div class="chart-wrap"><canvas id="scatter"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Right: signals / alerts / engine -->
+    <div class="col-lg-4">
+        <div class="panel mb-3">
+            <div class="panel__head"><h2><i class="fas fa-bolt me-2 dim"></i>Sinyaller</h2></div>
+            <div class="panel__body" style="padding:0;"><div id="signalsFeed" class="feed"><div class="empty">Henüz sinyal yok</div></div></div>
+        </div>
+
+        <div class="panel mb-3">
+            <div class="panel__head"><h2><i class="fas fa-triangle-exclamation me-2 dim"></i>Uyarılar</h2></div>
+            <div class="panel__body" style="padding:0;"><div id="alertsFeed"><div class="empty">Uyarı yok</div></div></div>
+        </div>
+
+        <div class="panel">
+            <div class="panel__head"><h2><i class="fas fa-gears me-2 dim"></i>Motor</h2></div>
+            <div class="panel__body" style="padding:0;" id="enginePanel"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
 const $ = (id) => document.getElementById(id);
 let scatterChart = null;
@@ -430,5 +342,4 @@ $('btnResearch').addEventListener('click', async () => {
 refreshAll();
 setInterval(refreshAll, 30000);  // 30 sn'de bir otomatik tazele
 </script>
-</body>
-</html>
+{% endblock %}

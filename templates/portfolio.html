@@ -1,509 +1,320 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📊 Portfolio - Kripto Trading Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .card {
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            transition: transform 0.3s ease;
-        }
-        .profit-card {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-            color: white;
-        }
-        .loss-card {
-            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
-            color: white;
-        }
-        .neutral-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        .price-up {
-            color: #28a745;
-            font-weight: bold;
-        }
-        .price-down {
-            color: #dc3545;
-            font-weight: bold;
-        }
-        .position-long {
-            background-color: rgba(40, 167, 69, 0.1);
-            border-left: 4px solid #28a745;
-        }
-        .position-short {
-            background-color: rgba(220, 53, 69, 0.1);
-            border-left: 4px solid #dc3545;
-        }
-        .position-spot {
-            background-color: rgba(23, 162, 184, 0.1);
-            border-left: 4px solid #17a2b8;
-        }
-    </style>
-</head>
-<body class="bg-light">
+{% extends "base.html" %}
+{% block title %}Portföy · Paera Terminal{% endblock %}
 
-<!-- Navbar -->
-<nav class="navbar navbar-expand-lg gradient-bg">
-    <div class="container">
-        <a class="navbar-brand text-white fw-bold" href="{{ url_for('dashboard') }}">
-            <i class="fas fa-rocket me-2"></i>Kripto Trading Dashboard
-        </a>
-        <div class="navbar-nav ms-auto">
-            <a class="nav-link text-white" href="{{ url_for('dashboard') }}">
-                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-            </a>
-            <a class="nav-link text-white active" href="{{ url_for('portfolio') }}">
-                <i class="fas fa-chart-pie me-1"></i>Portfolio
-            </a>
-            <a class="nav-link text-white" href="{{ url_for('settings') }}">
-                <i class="fas fa-cog me-1"></i>Ayarlar
-            </a>
-        </div>
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Portföy</h1>
+        <div class="sub">Pozisyonlar, işlem geçmişi ve coin performansı</div>
     </div>
-</nav>
+</div>
 
-<!-- Main Content -->
-<div class="container mt-4">
-    
-    <!-- Portfolio Overview -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card {{ 'profit-card' if summary.get('unrealized_pnl', 0) > 0 else 'loss-card' if summary.get('unrealized_pnl', 0) < 0 else 'neutral-card' }}">
-                <div class="card-body text-center">
-                    <i class="fas fa-chart-line fa-3x mb-3"></i>
-                    <h4>Toplam P&L</h4>
-                    <h2>${{ "{:.2f}".format(summary.get('unrealized_pnl', 0)) }}</h2>
-                    <p class="mb-0">
-                        {{ "{:+.2f}".format(summary.get('total_pnl_percent', 0)) }}%
-                        {% if summary.get('unrealized_pnl', 0) > 0 %}
-                            <i class="fas fa-arrow-up ms-2"></i>
-                        {% elif summary.get('unrealized_pnl', 0) < 0 %}
-                            <i class="fas fa-arrow-down ms-2"></i>
-                        {% else %}
-                            <i class="fas fa-minus ms-2"></i>
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body text-center">
-                    <i class="fas fa-wallet fa-2x mb-3 text-primary"></i>
-                    <h5>Portfolio Değeri</h5>
-                    <h3>${{ "{:.2f}".format(summary.get('current_value', 0)) }}</h3>
-                    <small class="text-muted">Yatırılan: ${{ "{:.2f}".format(summary.get('invested_amount', 0)) }}</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body text-center">
-                    <i class="fas fa-percentage fa-2x mb-3 text-success"></i>
-                    <h5>Başarı Oranı</h5>
-                    <h3>{{ "{:.1f}".format(summary.get('win_rate', 0)) }}%</h3>
-                    <small class="text-muted">
-                        {{ summary.get('successful_trades', 0) }} / {{ summary.get('total_trades', 0) }} işlem
-                    </small>
-                </div>
+<!-- KPI'lar -->
+<div class="row g-3 mb-3">
+    <div class="col-6 col-xl-4">
+        <div class="kpi">
+            <div class="kpi__label"><i class="fas fa-chart-line"></i> Toplam P&amp;L</div>
+            <div class="kpi__value">${{ "{:.2f}".format(summary.get('unrealized_pnl', 0)) }}</div>
+            {% set spnl = summary.get('unrealized_pnl', 0) %}
+            <div class="kpi__delta {{ 'pos' if spnl > 0 else 'neg' if spnl < 0 else 'dim' }}">
+                <i class="fas fa-{{ 'arrow-up' if spnl > 0 else 'arrow-down' if spnl < 0 else 'minus' }}"></i>
+                {{ "{:+.2f}".format(summary.get('total_pnl_percent', 0)) }}%
             </div>
         </div>
     </div>
+    <div class="col-6 col-xl-4">
+        <div class="kpi">
+            <div class="kpi__label"><i class="fas fa-wallet"></i> Portföy Değeri</div>
+            <div class="kpi__value">${{ "{:.2f}".format(summary.get('current_value', 0)) }}</div>
+            <div class="kpi__delta dim">Yatırılan: ${{ "{:.2f}".format(summary.get('invested_amount', 0)) }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-4">
+        <div class="kpi">
+            <div class="kpi__label"><i class="fas fa-percentage"></i> Başarı Oranı</div>
+            <div class="kpi__value">{{ "{:.1f}".format(summary.get('win_rate', 0)) }}%</div>
+            <div class="kpi__delta dim">{{ summary.get('successful_trades', 0) }}/{{ summary.get('total_trades', 0) }} işlem</div>
+        </div>
+    </div>
+</div>
 
-    <!-- Binance Real Data Section -->
-    {% if binance_data and binance_data.get('connected', False) %}
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card border-warning">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0">
-                        <i class="fab fa-bitcoin me-2"></i>
-                        Binance Gerçek Cüzdan Verileri
-                        <span class="badge {{ 'bg-warning text-dark' if binance_data.get('testnet') else 'bg-success' }} ms-2">
-                            {{ 'TESTNET' if binance_data.get('testnet') else 'MAINNET' }}
-                        </span>
-                        <span class="badge bg-primary ms-2">
-                            ${{ "{:.2f}".format(binance_data.get('total_portfolio_value', 0)) }}
-                        </span>
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <!-- Binance Bakiyeler -->
-                        <div class="col-md-6">
-                            <h6><i class="fas fa-coins me-2"></i>Cüzdan Bakiyeleri:</h6>
-                            {% if binance_data.get('portfolio_items') %}
-                                <div class="row">
-                                    {% for item in binance_data.portfolio_items[:6] %}
-                                        <div class="col-md-6 col-lg-4 mb-2">
-                                            <div class="d-flex justify-content-between align-items-center bg-light p-2 rounded">
-                                                <strong>{{ item.symbol }}</strong>
-                                                <div class="text-end">
-                                                    <div class="text-primary">{{ "{:.4f}".format(item.amount) }}</div>
-                                                    <small class="text-muted">${{ "{:.2f}".format(item.usd_value) }}</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    {% endfor %}
+<!-- Binance Gerçek Veriler -->
+{% if binance_data and binance_data.get('connected', False) %}
+<div class="panel mb-3">
+    <div class="panel__head">
+        <h2><i class="fab fa-bitcoin me-2 dim"></i>Binance Gerçek Cüzdan Verileri</h2>
+        <div class="d-flex gap-2 align-items-center">
+            <span class="pill {{ 'yellow' if binance_data.get('testnet') else 'green' }}">{{ 'TESTNET' if binance_data.get('testnet') else 'MAINNET' }}</span>
+            <span class="pill blue">${{ "{:.2f}".format(binance_data.get('total_portfolio_value', 0)) }}</span>
+        </div>
+    </div>
+    <div class="panel__body">
+        <div class="row g-3">
+            <!-- Binance Bakiyeler -->
+            <div class="col-md-6">
+                <h6 class="dim mb-2"><i class="fas fa-coins me-2"></i>Cüzdan Bakiyeleri</h6>
+                {% if binance_data.get('portfolio_items') %}
+                    <div class="row g-2">
+                        {% for item in binance_data.portfolio_items[:6] %}
+                            <div class="col-md-6 col-lg-4">
+                                <div class="d-flex justify-content-between align-items-center" style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
+                                    <strong>{{ item.symbol }}</strong>
+                                    <div class="text-end">
+                                        <div class="num" style="color:var(--blue);">{{ "{:.4f}".format(item.amount) }}</div>
+                                        <small class="muted">${{ "{:.2f}".format(item.usd_value) }}</small>
+                                    </div>
                                 </div>
-                            {% else %}
-                                <p class="text-muted">Bakiye bulunamadı</p>
-                            {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="muted">Bakiye bulunamadı</p>
+                {% endif %}
+            </div>
+
+            <!-- Son İşlemler -->
+            <div class="col-md-6">
+                <h6 class="dim mb-2"><i class="fas fa-history me-2"></i>Son Binance İşlemleri</h6>
+                {% if binance_data.get('real_trades') %}
+                    <div class="d-flex flex-column gap-2">
+                        {% for trade in binance_data.real_trades[:5] %}
+                            <div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>{{ trade.symbol }}</strong>
+                                        <span class="pill {{ 'green' if trade.side.upper() == 'BUY' else 'red' }}">{{ trade.side.upper() }}</span>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="num {{ 'pos' if trade.side.upper() == 'BUY' else 'neg' }}">${{ "{:.2f}".format(trade.cost) }}</div>
+                                        <small class="muted">{{ trade.timestamp.split('T')[0] if 'T' in trade.timestamp else trade.timestamp }}</small>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="muted">Son işlem bulunamadı</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Trading Özeti -->
+        <div class="row g-3 mt-1">
+            <div class="col-12">
+                <h6 class="dim mb-2"><i class="fas fa-chart-bar me-2"></i>30 Günlük Trading Özeti</h6>
+                {% if binance_data.get('trading_summary') and binance_data.trading_summary.get('success') %}
+                    <div class="row g-3 text-center">
+                        <div class="col-6 col-md-2">
+                            <div class="kpi__value" style="font-size:18px;color:var(--blue);">{{ binance_data.trading_summary.get('total_trades', 0) }}</div>
+                            <small class="muted">Toplam İşlem</small>
                         </div>
-                        
-                        <!-- Son İşlemler -->
-                        <div class="col-md-6">
-                            <h6><i class="fas fa-history me-2"></i>Son Binance İşlemleri:</h6>
-                            {% if binance_data.get('real_trades') %}
-                                <div class="list-group list-group-flush">
-                                    {% for trade in binance_data.real_trades[:5] %}
-                                        <div class="list-group-item p-2">
-                                            <div class="d-flex justify-content-between align-items-center">
-                                                <div>
-                                                    <strong>{{ trade.symbol }}</strong>
-                                                    <span class="badge {{ 'bg-success' if trade.side.upper() == 'BUY' else 'bg-danger' }} ms-1">
-                                                        {{ trade.side.upper() }}
-                                                    </span>
-                                                </div>
-                                                <div class="text-end">
-                                                    <div class="{{ 'text-success' if trade.side.upper() == 'BUY' else 'text-danger' }}">
-                                                        ${{ "{:.2f}".format(trade.cost) }}
-                                                    </div>
-                                                    <small class="text-muted">{{ trade.timestamp.split('T')[0] if 'T' in trade.timestamp else trade.timestamp }}</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    {% endfor %}
-                                </div>
-                            {% else %}
-                                <p class="text-muted">Son işlem bulunamadı</p>
-                            {% endif %}
+                        <div class="col-6 col-md-2">
+                            <div class="kpi__value pos" style="font-size:18px;">{{ binance_data.trading_summary.get('buy_trades', 0) }}</div>
+                            <small class="muted">Buy</small>
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <div class="kpi__value neg" style="font-size:18px;">{{ binance_data.trading_summary.get('sell_trades', 0) }}</div>
+                            <small class="muted">Sell</small>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="kpi__value" style="font-size:18px;color:var(--blue);">${{ "{:.2f}".format(binance_data.trading_summary.get('total_volume', 0)) }}</div>
+                            <small class="muted">Toplam Hacim</small>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="kpi__value warn" style="font-size:18px;">${{ "{:.4f}".format(binance_data.trading_summary.get('total_fees', 0)) }}</div>
+                            <small class="muted">Toplam Komisyon</small>
                         </div>
                     </div>
-                    
-                    <!-- Trading Özeti -->
-                    <div class="row mt-3">
-                        <div class="col-12">
-                            <h6><i class="fas fa-chart-bar me-2"></i>30 Günlük Trading Özeti:</h6>
-                            {% if binance_data.get('trading_summary') and binance_data.trading_summary.get('success') %}
-                                <div class="row">
-                                    <div class="col-md-2">
-                                        <div class="text-center">
-                                            <h6 class="text-primary">{{ binance_data.trading_summary.get('total_trades', 0) }}</h6>
-                                            <small class="text-muted">Toplam İşlem</small>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <div class="text-center">
-                                            <h6 class="text-success">{{ binance_data.trading_summary.get('buy_trades', 0) }}</h6>
-                                            <small class="text-muted">Buy</small>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <div class="text-center">
-                                            <h6 class="text-danger">{{ binance_data.trading_summary.get('sell_trades', 0) }}</h6>
-                                            <small class="text-muted">Sell</small>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="text-center">
-                                            <h6 class="text-info">${{ "{:.2f}".format(binance_data.trading_summary.get('total_volume', 0)) }}</h6>
-                                            <small class="text-muted">Toplam Hacim</small>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="text-center">
-                                            <h6 class="text-warning">${{ "{:.4f}".format(binance_data.trading_summary.get('total_fees', 0)) }}</h6>
-                                            <small class="text-muted">Toplam Komisyon</small>
-                                        </div>
-                                    </div>
-                                </div>
-                            {% else %}
-                                <p class="text-muted">Trading özeti bulunamadı</p>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
+                {% else %}
+                    <p class="muted">Trading özeti bulunamadı</p>
+                {% endif %}
             </div>
         </div>
     </div>
-    {% elif binance_data %}
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="alert alert-warning">
-                <i class="fas fa-exclamation-triangle me-2"></i>
-                <strong>Binance Bağlantısı:</strong> {{ binance_data.get('error', 'Bağlantı kurulamadı') }}
-                <br><small>Binance API anahtarlarınızı Ayarlar sayfasından kontrol edin.</small>
-            </div>
-        </div>
+</div>
+{% elif binance_data %}
+<div class="panel mb-3" style="border-color:rgba(240,185,11,.35);">
+    <div class="panel__body">
+        <i class="fas fa-triangle-exclamation me-2 warn"></i>
+        <strong>Binance Bağlantısı:</strong> {{ binance_data.get('error', 'Bağlantı kurulamadı') }}
+        <div class="dim" style="font-size:12px;margin-top:6px;">Binance API anahtarlarınızı Ayarlar sayfasından kontrol edin.</div>
     </div>
-    {% endif %}
+</div>
+{% endif %}
 
-    <!-- Portfolio Chart -->
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Portfolio Dağılımı</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="portfolioChart" width="400" height="400"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>P&L Trendi</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="pnlChart" width="400" height="400"></canvas>
-                </div>
+<!-- Portfolio Grafikleri -->
+<div class="row g-3 mb-3">
+    <div class="col-lg-6">
+        <div class="panel">
+            <div class="panel__head"><h2><i class="fas fa-chart-pie me-2 dim"></i>Portföy Dağılımı</h2></div>
+            <div class="panel__body">
+                <canvas id="portfolioChart" width="400" height="400"></canvas>
             </div>
         </div>
     </div>
-
-    <!-- Open Positions -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>Açık Pozisyonlar</h5>
-                    <span class="badge bg-primary">{{ positions|length }} pozisyon</span>
-                </div>
-                <div class="card-body">
-                    {% if positions %}
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Coin</th>
-                                        <th>Pozisyon Tipi</th>
-                                        <th>Giriş Fiyatı</th>
-                                        <th>Güncel Fiyat</th>
-                                        <th>Miktar</th>
-                                        <th>Giriş Değeri</th>
-                                        <th>Güncel Değer</th>
-                                        <th>P&L</th>
-                                        <th>Kaldıraç</th>
-                                        <th>Giriş Tarihi</th>
-                                        <th>İşlemler</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for position in positions %}
-                                        <tr class="{{ 'position-long' if position.position_type == 'LONG' else 'position-short' if position.position_type == 'SHORT' else 'position-spot' }}">
-                                            <td>
-                                                <strong>{{ position.coin_symbol }}</strong>
-                                            </td>
-                                            <td>
-                                                <span class="badge {{ 'bg-success' if position.position_type == 'LONG' else 'bg-danger' if position.position_type == 'SHORT' else 'bg-info' }}">
-                                                    {{ position.position_type }}
-                                                </span>
-                                            </td>
-                                            <td>${{ "{:.6f}".format(position.entry_price) }}</td>
-                                            <td>${{ "{:.6f}".format(position.current_price or position.entry_price) }}</td>
-                                            <td>{{ "{:.4f}".format(position.quantity) }}</td>
-                                            <td>${{ "{:.2f}".format(position.entry_value) }}</td>
-                                            <td>${{ "{:.2f}".format(position.current_value or position.entry_value) }}</td>
-                                            <td>
-                                                <span class="{{ 'price-up' if (position.unrealized_pnl or 0) >= 0 else 'price-down' }}">
-                                                    ${{ "{:.2f}".format(position.unrealized_pnl or 0) }}
-                                                    <br><small>({{ "{:+.2f}".format(position.pnl_percent or 0) }}%)</small>
-                                                </span>
-                                            </td>
-                                            <td>{{ "{}x".format(position.leverage) if position.leverage != 1 else "Spot" }}</td>
-                                            <td><small>{{ position.entry_timestamp }}</small></td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-danger" 
-                                                        onclick="closePosition('{{ position.coin_symbol }}', '{{ position.position_type }}')">
-                                                    <i class="fas fa-times"></i> Kapat
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% else %}
-                        <div class="text-center py-4">
-                            <i class="fas fa-chart-area fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">Açık pozisyon bulunmuyor</p>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Trading History -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>İşlem Geçmişi</h5>
-                    <span class="badge bg-secondary">Son {{ trades|length }} işlem</span>
-                </div>
-                <div class="card-body">
-                    {% if trades %}
-                        <div class="table-responsive">
-                            <table class="table table-sm table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Tarih</th>
-                                        <th>Coin</th>
-                                        <th>İşlem Tipi</th>
-                                        <th>Fiyat</th>
-                                        <th>Miktar</th>
-                                        <th>Toplam Değer</th>
-                                        <th>Güven</th>
-                                        <th>İşlem Nedeni</th>
-                                        <th>Durum</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for trade in trades %}
-                                        <tr>
-                                            <td><small>{{ trade.timestamp }}</small></td>
-                                            <td><strong>{{ trade.coin_symbol }}</strong></td>
-                                            <td>
-                                                <span class="badge {{ 'bg-success' if 'BUY' in trade.trade_type or 'LONG' in trade.trade_type else 'bg-danger' if 'SELL' in trade.trade_type or 'SHORT' in trade.trade_type else 'bg-warning' }}">
-                                                    {{ trade.trade_type }}
-                                                </span>
-                                            </td>
-                                            <td>${{ "{:.6f}".format(trade.price) }}</td>
-                                            <td>{{ "{:.4f}".format(trade.quantity) }}</td>
-                                            <td>${{ "{:.2f}".format(trade.total_value) }}</td>
-                                            <td>
-                                                {% if trade.confidence %}
-                                                    <div class="progress" style="height: 15px;">
-                                                        <div class="progress-bar" role="progressbar" 
-                                                             style="width: {{ trade.confidence }}%"
-                                                             aria-valuenow="{{ trade.confidence }}" 
-                                                             aria-valuemin="0" aria-valuemax="100">
-                                                            {{ "{:.0f}".format(trade.confidence) }}%
-                                                        </div>
-                                                    </div>
-                                                {% else %}
-                                                    <span class="text-muted">-</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                <small>{{ trade.trade_reason or "Manuel işlem" }}</small>
-                                            </td>
-                                            <td>
-                                                <span class="badge {{ 'bg-warning' if trade.is_simulated else 'bg-success' }}">
-                                                    {{ 'Simülasyon' if trade.is_simulated else 'Gerçek' }}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% else %}
-                        <div class="text-center py-4">
-                            <i class="fas fa-history fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">İşlem geçmişi bulunmuyor</p>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Coin Performance -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-coins me-2"></i>Coin Performansları (Son 30 Gün)</h5>
-                </div>
-                <div class="card-body">
-                    {% if coin_performances %}
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Coin</th>
-                                        <th>Analiz Sayısı</th>
-                                        <th>İşlem Sayısı</th>
-                                        <th>Toplam P&L</th>
-                                        <th>Ortalama Güven</th>
-                                        <th>Performans</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for perf in coin_performances %}
-                                        {% if perf.coin_symbol %}
-                                            <tr>
-                                                <td><strong>{{ perf.coin_symbol }}</strong></td>
-                                                <td>
-                                                    <span class="badge bg-info">{{ perf.analysis_count }}</span>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-secondary">{{ perf.trade_count }}</span>
-                                                </td>
-                                                <td>
-                                                    <span class="{{ 'price-up' if (perf.total_pnl or 0) >= 0 else 'price-down' }}">
-                                                        ${{ "{:.2f}".format(perf.total_pnl or 0) }}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    {% if perf.avg_confidence %}
-                                                        <div class="progress" style="height: 15px;">
-                                                            <div class="progress-bar bg-success" role="progressbar" 
-                                                                 style="width: {{ perf.avg_confidence }}%">
-                                                                {{ "{:.0f}".format(perf.avg_confidence) }}%
-                                                            </div>
-                                                        </div>
-                                                    {% else %}
-                                                        <span class="text-muted">-</span>
-                                                    {% endif %}
-                                                </td>
-                                                <td>
-                                                    {% set pnl = perf.total_pnl or 0 %}
-                                                    {% if pnl > 50 %}
-                                                        <span class="badge bg-success">Mükemmel</span>
-                                                    {% elif pnl > 10 %}
-                                                        <span class="badge bg-success">İyi</span>
-                                                    {% elif pnl > -10 %}
-                                                        <span class="badge bg-warning">Nötr</span>
-                                                    {% else %}
-                                                        <span class="badge bg-danger">Zayıf</span>
-                                                    {% endif %}
-                                                </td>
-                                            </tr>
-                                        {% endif %}
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% else %}
-                        <div class="text-center py-4">
-                            <i class="fas fa-coins fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">Coin performans verisi bulunmuyor</p>
-                        </div>
-                    {% endif %}
-                </div>
+    <div class="col-lg-6">
+        <div class="panel">
+            <div class="panel__head"><h2><i class="fas fa-chart-area me-2 dim"></i>P&amp;L Trendi</h2></div>
+            <div class="panel__body">
+                <canvas id="pnlChart" width="400" height="400"></canvas>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Açık Pozisyonlar -->
+<div class="panel mb-3">
+    <div class="panel__head">
+        <h2><i class="fas fa-layer-group me-2 dim"></i>Açık Pozisyonlar</h2>
+        <span class="pill blue">{{ positions|length }} pozisyon</span>
+    </div>
+    {% if positions %}
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Coin</th><th>Pozisyon Tipi</th><th>Giriş Fiyatı</th><th>Güncel Fiyat</th>
+                    <th>Miktar</th><th>Giriş Değeri</th><th>Güncel Değer</th><th>P&amp;L</th>
+                    <th>Kaldıraç</th><th>Giriş Tarihi</th><th class="text-end">İşlemler</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for position in positions %}
+                <tr>
+                    <td><strong>{{ position.coin_symbol }}</strong></td>
+                    <td><span class="pill {{ 'green' if position.position_type == 'LONG' else 'red' if position.position_type == 'SHORT' else 'blue' }}">{{ position.position_type }}</span></td>
+                    <td class="num">${{ "{:.6f}".format(position.entry_price) }}</td>
+                    <td class="num">${{ "{:.6f}".format(position.current_price or position.entry_price) }}</td>
+                    <td class="num">{{ "{:.4f}".format(position.quantity) }}</td>
+                    <td class="num">${{ "{:.2f}".format(position.entry_value) }}</td>
+                    <td class="num">${{ "{:.2f}".format(position.current_value or position.entry_value) }}</td>
+                    <td class="num {{ 'pos' if (position.unrealized_pnl or 0) >= 0 else 'neg' }}">
+                        ${{ "{:.2f}".format(position.unrealized_pnl or 0) }}
+                        <div style="font-size:11px;">({{ "{:+.2f}".format(position.pnl_percent or 0) }}%)</div>
+                    </td>
+                    <td class="dim">{{ "{}x".format(position.leverage) if position.leverage != 1 else "Spot" }}</td>
+                    <td class="dim" style="font-size:12px;">{{ position.entry_timestamp }}</td>
+                    <td class="text-end">
+                        <button class="btn btn-danger-soft btn-sm"
+                                onclick="closePosition('{{ position.coin_symbol }}', '{{ position.position_type }}')">
+                            <i class="fas fa-xmark"></i> Kapat
+                        </button>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="panel__body text-center py-5">
+        <i class="fas fa-chart-area fa-2x muted mb-3"></i>
+        <p class="muted">Açık pozisyon bulunmuyor</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- İşlem Geçmişi -->
+<div class="panel mb-3">
+    <div class="panel__head">
+        <h2><i class="fas fa-right-left me-2 dim"></i>İşlem Geçmişi</h2>
+        <span class="pill gray">Son {{ trades|length }} işlem</span>
+    </div>
+    {% if trades %}
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr><th>Tarih</th><th>Coin</th><th>İşlem Tipi</th><th>Fiyat</th><th>Miktar</th><th>Toplam Değer</th><th>Güven</th><th>İşlem Nedeni</th><th>Durum</th></tr>
+            </thead>
+            <tbody>
+            {% for trade in trades %}
+                <tr>
+                    <td class="dim" style="font-size:12px;">{{ trade.timestamp }}</td>
+                    <td><strong>{{ trade.coin_symbol }}</strong></td>
+                    <td><span class="pill {{ 'green' if 'BUY' in trade.trade_type or 'LONG' in trade.trade_type else 'red' if 'SELL' in trade.trade_type or 'SHORT' in trade.trade_type else 'yellow' }}">{{ trade.trade_type }}</span></td>
+                    <td class="num">${{ "{:.6f}".format(trade.price) }}</td>
+                    <td class="num">{{ "{:.4f}".format(trade.quantity) }}</td>
+                    <td class="num">${{ "{:.2f}".format(trade.total_value) }}</td>
+                    <td>
+                        {% if trade.confidence %}
+                        <div class="progress" style="height: 14px;background:var(--surface-2);">
+                            <div class="progress-bar" role="progressbar" style="width: {{ trade.confidence }}%; background:var(--blue);"
+                                 aria-valuenow="{{ trade.confidence }}" aria-valuemin="0" aria-valuemax="100">
+                                {{ "{:.0f}".format(trade.confidence) }}%
+                            </div>
+                        </div>
+                        {% else %}
+                            <span class="muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="dim" style="font-size:12px;">{{ trade.trade_reason or "Manuel işlem" }}</td>
+                    <td><span class="pill {{ 'yellow' if trade.is_simulated else 'green' }}">{{ 'Simülasyon' if trade.is_simulated else 'Gerçek' }}</span></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="panel__body text-center py-5">
+        <i class="fas fa-clock-rotate-left fa-2x muted mb-3"></i>
+        <p class="muted">İşlem geçmişi bulunmuyor</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Coin Performansları -->
+<div class="panel">
+    <div class="panel__head"><h2><i class="fas fa-coins me-2 dim"></i>Coin Performansları (Son 30 Gün)</h2></div>
+    {% if coin_performances %}
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>Coin</th><th>Analiz Sayısı</th><th>İşlem Sayısı</th><th>Toplam P&amp;L</th><th>Ortalama Güven</th><th>Performans</th></tr></thead>
+            <tbody>
+            {% for perf in coin_performances %}
+                {% if perf.coin_symbol %}
+                    <tr>
+                        <td><strong>{{ perf.coin_symbol }}</strong></td>
+                        <td><span class="pill blue">{{ perf.analysis_count }}</span></td>
+                        <td><span class="pill gray">{{ perf.trade_count }}</span></td>
+                        <td class="num {{ 'pos' if (perf.total_pnl or 0) >= 0 else 'neg' }}">${{ "{:.2f}".format(perf.total_pnl or 0) }}</td>
+                        <td>
+                            {% if perf.avg_confidence %}
+                            <div class="progress" style="height: 14px;background:var(--surface-2);">
+                                <div class="progress-bar" role="progressbar" style="width: {{ perf.avg_confidence }}%;background:var(--green);">
+                                    {{ "{:.0f}".format(perf.avg_confidence) }}%
+                                </div>
+                            </div>
+                            {% else %}
+                                <span class="muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% set pnl = perf.total_pnl or 0 %}
+                            {% if pnl > 50 %}
+                                <span class="pill green">Mükemmel</span>
+                            {% elif pnl > 10 %}
+                                <span class="pill green">İyi</span>
+                            {% elif pnl > -10 %}
+                                <span class="pill yellow">Nötr</span>
+                            {% else %}
+                                <span class="pill red">Zayıf</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endif %}
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="panel__body text-center py-5">
+        <i class="fas fa-coins fa-2x muted mb-3"></i>
+        <p class="muted">Coin performans verisi bulunmuyor</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
     // Portfolio Pie Chart - Binance verilerini kullan
     const portfolioData = [
@@ -556,13 +367,13 @@
 
     // P&L Trend Chart - Binance verilerine dayalı
     const ctx2 = document.getElementById('pnlChart').getContext('2d');
-    
+
     {% if binance_data and binance_data.get('connected', False) %}
         // Binance gerçek verileri kullan
         const binanceValue = {{ binance_data.get('total_portfolio_value', 0) }};
         const investedAmount = {{ summary.get('invested_amount', binance_data.get('total_portfolio_value', 1000)) }};
         const currentPnL = binanceValue - investedAmount;
-        
+
         new Chart(ctx2, {
             type: 'line',
             data: {
@@ -669,6 +480,4 @@
         {% endif %}
     });
 </script>
-
-</body>
-</html> 
+{% endblock %}

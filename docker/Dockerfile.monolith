@@ -1,0 +1,40 @@
+# Monolith imajı (web_app.py) — TAM özellik seti:
+#   LSTM/DQN (TensorFlow) + haber/whale + automation engine + simulation (paper trading) + dashboard.
+# Build context = repo kökü (trading/). Ağır ML bağımlılıkları içerir (TF/torch/transformers) → büyük imaj.
+# Not: hafif mikroservis dağıtımı için docker/Dockerfile (web-service) korunur.
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TF_CPP_MIN_LOG_LEVEL=2
+
+WORKDIR /app
+
+# Sistem bağımlılıkları: numpy/scipy/tensorflow/torch runtime (libgomp) + bazı paketlerin derlenmesi
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential gcc g++ curl libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 1) Paylaşılan veri katmanı paketi (SQLAlchemy/alembic/psycopg buradan gelir)
+COPY packages/database /app/packages/database
+RUN pip install /app/packages/database
+
+# 2) Monolith bağımlılıkları (TF/torch/transformers dahil — bu katman ayrı tutuldu ki kod
+#    değişince yeniden kurulmasın)
+COPY requirements.txt /app/requirements.txt
+RUN pip install -r /app/requirements.txt
+
+# 3) Uygulama kodu: tüm kök modüller, automation/, templates/, static/ (.dockerignore ile filtreli)
+COPY . /app
+
+# 4) Açılış script'lerini kök seviyeye kopyala (entrypoint /app/wait_for_db.py bekler)
+COPY docker/entrypoint.sh /app/entrypoint.sh
+COPY docker/wait_for_db.py /app/wait_for_db.py
+RUN chmod +x /app/entrypoint.sh
+
+EXPOSE 5000
+
+# entrypoint: DB bekle → shared migrate → tenant migrate → seed → default provision → exec CMD
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["python", "docker/run_monolith.py"]

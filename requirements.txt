@@ -47,10 +47,11 @@ stable-baselines3==2.0.0
 
 # Enhanced Data Science and Visualization
 plotly==5.15.0
-dash==2.11.1
+# dash==2.11.1  # DEVRE DIŞI: Flask<2.3 gerektirir → Flask 3.0.0 ile çakışır (ResolutionImpossible).
+#               Kod tabanında import edilmiyor (kullanılmıyor). Gerekirse Flask-3 uyumlu sürüme yükselt.
 
 # Additional TensorFlow Tools
-tensorboard==2.13.0
+# tensorboard==2.13.0  # DEVRE DIŞI: TF 2.15 uyumlu tensorboard'u (~2.15) kendisi kurar; 2.13 pin çakışır.
 
 # Advanced Trading Algorithms
 quantlib==1.31

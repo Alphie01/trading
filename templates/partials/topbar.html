@@ -1,0 +1,36 @@
+{# Üst bar — sembol arama, mod rozeti, API health, son tarama, kullanıcı menüsü #}
+<header class="topbar">
+    <button class="topbar__toggle" onclick="paToggleSidebar()" aria-label="Menü"><i class="fas fa-bars"></i></button>
+
+    <form class="topbar__search" onsubmit="paSearchSubmit(event)" role="search">
+        <i class="fas fa-magnifying-glass"></i>
+        <input id="paSymbolSearch" type="text" placeholder="Sembol ara (BTC, ETH...)" autocomplete="off" spellcheck="false">
+    </form>
+
+    <div class="topbar__spacer"></div>
+
+    {# Mod rozeti — canlıya alınana kadar TESTNET (statik gösterim; ileride /api/trading_status ile doldurulur) #}
+    <span class="chip mode" id="paModeBadge" title="Çalışma modu"><i class="fas fa-vial"></i> TESTNET</span>
+
+    <span class="chip d-none d-md-inline-flex" id="paApiHealth" title="API durumu">
+        <span class="dot" id="paApiHealthDot"></span> API
+    </span>
+
+    <span class="chip d-none d-lg-inline-flex" id="paLastScan" title="Son tarama">
+        <i class="fas fa-clock"></i> <span id="paLastScanVal">—</span>
+    </span>
+
+    <div class="dropdown">
+        <button class="chip" data-bs-toggle="dropdown" aria-expanded="false" style="cursor:pointer;">
+            <i class="fas fa-circle-user"></i>
+            <span class="d-none d-sm-inline">{{ current_user.username if (current_user and current_user.is_authenticated and current_user.username) else 'Hesap' }}</span>
+            <i class="fas fa-chevron-down" style="font-size:10px;"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="{{ url_for('settings') }}"><i class="fas fa-gear me-2"></i>Ayarlar</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('portfolio') }}"><i class="fas fa-wallet me-2"></i>Portfolio</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i class="fas fa-right-from-bracket me-2"></i>Çıkış Yap</a></li>
+        </ul>
+    </div>
+</header>
