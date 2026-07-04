@@ -31,6 +31,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # .env'deki TÜM değişkenler container'a aktarılır: BINANCE_API_KEY/BINANCE_SECRET_KEY/BINANCE_TESTNET,
+    # NEWSAPI_KEY, WHALE_ALERT_API_KEY, OLLAMA_*/INTELLIGENCE_* vb. (aksi halde container görmez → testnet
+    # default 'true' kalır, keyler boş olur). Aşağıdaki environment: bloğundaki AÇIK değerler bunları EZER.
+    env_file:
+      - .env
     environment:
       # DB
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app_db}

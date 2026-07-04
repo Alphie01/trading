@@ -30,6 +30,18 @@ class AutomationConfig:
     TRADE_ENABLED = _bool("AUTO_TRADE_ENABLED", "false")  # canlı trade — Faz 7, default KAPALI
     # Market Intelligence (haber/sosyal/LLM) skorlamaya bağlansın mı — default KAPALI (opt-in)
     MARKET_INTEL_ENABLED = _bool("AUTO_MARKET_INTEL_ENABLED", "false")
+    # Tree modelleri (Faz 3) ai_prediction_score'a blend edilsin mi — default KAPALI (opt-in).
+    # KAPALI iken ai_snapshot davranışı AYNEN eskisi (byte-aynı).
+    TREE_MODELS_ENABLED = _bool("AUTO_TREE_MODELS_ENABLED", "false")
+    TREE_MODEL_TYPE = os.getenv("AUTO_TREE_MODEL_TYPE", "random_forest")
+    W_TREE = float(os.getenv("AUTO_W_TREE", "0.0"))  # LSTM↔tree harman ağırlığı (0 → tree katkısı yok)
+    # Ensemble (Faz 4) — birden çok tree tipi + dinamik ağırlık. W_ENSEMBLE Faz 7 (score_full_v2) için.
+    W_ENSEMBLE = float(os.getenv("AUTO_W_ENSEMBLE", "0.0"))
+    ENSEMBLE_TREE_TYPES = [s.strip() for s in os.getenv("AUTO_ENSEMBLE_TREE_TYPES", "random_forest").split(",") if s.strip()]
+    WEIGHT_EWMA_ALPHA = float(os.getenv("AUTO_WEIGHT_EWMA_ALPHA", "0.3"))  # feedback ağırlık güncelleme hızı
+    # Regime + anomaly (Faz 5) — research'e rejim/anomali ekler; anomali yalnız RİSK'i artırır.
+    # Default KAPALI (opt-in). KAPALI iken research davranışı AYNEN eskisi.
+    REGIME_ANOMALY_ENABLED = _bool("AUTO_REGIME_ANOMALY_ENABLED", "false")
 
     # Stablecoin base'leri (discovery dışı)
     STABLE_BASES = set(_csv(
@@ -70,6 +82,9 @@ class AutomationConfig:
         "AUTO_DEMO_MODE": ("DEMO_MODE", "bool"),
         "AUTO_TRADE_ENABLED": ("TRADE_ENABLED", "bool"),
         "AUTO_MARKET_INTEL_ENABLED": ("MARKET_INTEL_ENABLED", "bool"),
+        "AUTO_TREE_MODELS_ENABLED": ("TREE_MODELS_ENABLED", "bool"),
+        "AUTO_W_TREE": ("W_TREE", "float"),
+        "AUTO_REGIME_ANOMALY_ENABLED": ("REGIME_ANOMALY_ENABLED", "bool"),
         "AUTO_W_NEWS_QUALITY": ("W_NEWS_QUALITY", "float"),
         "AUTO_W_SOCIAL_MOMENTUM": ("W_SOCIAL_MOMENTUM", "float"),
         "AUTO_WATCHLIST_MIN_OPPORTUNITY": ("WATCHLIST_MIN_OPPORTUNITY", "float"),

@@ -102,10 +102,12 @@ def technical_snapshot(df) -> Dict:
     }
 
 
-def ai_snapshot(df, symbol: str) -> Optional[Dict]:
-    """OPSİYONEL AI tahmini (optimize predictor). TF/model yoksa None (güvenle atlanır).
+def _lstm_ai_snapshot(df, symbol: str) -> Optional[Dict]:
+    """OPSİYONEL LSTM tabanlı AI tahmini (optimize predictor). TF/model yoksa None.
 
     AUTO_USE_AI=false ile kapatılabilir. Bellek-cache sayesinde model yeniden eğitilmez.
+    Not: AVX'siz prod sunucuda TensorFlow SIGILL edebilir → burası None döner; tree modeli
+    (varsa) yine ai skoru üretebilir (bkz. _tree_ai_snapshot).
     """
     if os.getenv("AUTO_USE_AI", "true").lower() not in ("1", "true", "yes"):
         return None
@@ -132,6 +134,69 @@ def ai_snapshot(df, symbol: str) -> Optional[Dict]:
         # TF yok / model hatası → sessizce atla (sahte skor üretme)
         print(f"ℹ️ AI snapshot atlandı ({symbol}): {e.__class__.__name__}")
         return None
+
+
+def _tree_ai_snapshot(df, symbol: str) -> Optional[Dict]:
+    """OPSİYONEL tree/ensemble tabanlı AI skoru (Faz 3-4). Default KAPALI; model yoksa None.
+
+    Faz 4: birden çok tree tipini (ENSEMBLE_TREE_TYPES) model_weights ağırlıklarıyla oylar.
+    Tree modelleri AVX-güvenli → LSTM'in çöktüğü ortamda bile ai skoru üretebilir.
+    """
+    try:
+        from .config import AutomationConfig as C
+        if not getattr(C, "TREE_MODELS_ENABLED", False):
+            return None
+        from models.ensemble import predict_ensemble
+        types = getattr(C, "ENSEMBLE_TREE_TYPES", None) or [getattr(C, "TREE_MODEL_TYPE", "random_forest")]
+        ens = predict_ensemble(symbol, df, model_types=types, feature_set_version="v2_ensemble_advanced")
+        if ens is None:
+            return None
+        p_up = float(ens["p_up"])
+        ai_score = round(max(0.0, min(100.0, 100.0 * p_up)), 2)  # 50 = nötr
+        return {
+            "ai_prediction_score": ai_score,
+            "ai_confidence": round(float(ens["confidence"]), 4),
+            "predicted_change_percent": None,
+            "source": "ensemble",
+            "ensemble": {"n_models": ens["n_models"], "recommendation": ens["recommendation"],
+                         "model_contributions": ens["model_contributions"]},
+        }
+    except Exception as e:
+        print(f"ℹ️ tree/ensemble AI snapshot atlandı ({symbol}): {e.__class__.__name__}")
+        return None
+
+
+def ai_snapshot(df, symbol: str) -> Optional[Dict]:
+    """LSTM + (opsiyonel) tree tabanlı AI skorunu birleştirir → research['ai'].
+
+    Tree KAPALI/eğitilmemiş (DEFAULT) → LSTM sonucunu AYNEN döndürür (byte-aynı davranış).
+    Yalnız LSTM None + tree var → tree; ikisi de var → confidence×W_TREE ile harman.
+    scoring.score_full DEĞİŞMEZ (ai bileşenini opsiyonel okur).
+    """
+    lstm_ai = _lstm_ai_snapshot(df, symbol)
+    tree_ai = _tree_ai_snapshot(df, symbol)
+
+    if tree_ai is None:
+        return lstm_ai  # DEFAULT yol → eskisiyle birebir
+    if lstm_ai is None:
+        return tree_ai
+
+    from .config import AutomationConfig as C
+    w_tree = float(getattr(C, "W_TREE", 0.0))
+    lw = float(lstm_ai.get("ai_confidence", 0) or 0) * (1.0 - w_tree)
+    tw = float(tree_ai.get("ai_confidence", 0) or 0) * w_tree
+    tot = lw + tw
+    if tot <= 0:
+        return lstm_ai
+    score = (float(lstm_ai["ai_prediction_score"]) * lw
+             + float(tree_ai["ai_prediction_score"]) * tw) / tot
+    return {
+        "ai_prediction_score": round(score, 2),
+        "ai_confidence": round(max(float(lstm_ai.get("ai_confidence", 0) or 0),
+                                   float(tree_ai.get("ai_confidence", 0) or 0)), 4),
+        "predicted_change_percent": lstm_ai.get("predicted_change_percent"),
+        "source": "blend",
+    }
 
 
 def sentiment_snapshot(symbol: str) -> Optional[Dict]:
@@ -220,13 +285,44 @@ def research_coin(symbol: str, ticker: Dict = None, df=None, fetcher=None,
     except Exception:
         current_price = None
 
+    technical = technical_snapshot(df)
+
+    # Faz 5: regime + anomaly (default KAPALI). Anomali YALNIZ RİSK'i artırır (BUY üretmez).
+    regime = None
+    anomaly = None
+    try:
+        from .config import AutomationConfig as C
+        if getattr(C, "REGIME_ANOMALY_ENABLED", False):
+            from decision.anomaly import detect_anomaly
+            from decision.regime import classify_regime
+            regime = classify_regime(df, symbol)
+            anomaly = detect_anomaly(df, symbol)
+            if anomaly and isinstance(technical, dict):
+                bump = float(anomaly.get("risk_contribution", 0) or 0)
+                if bump > 0:
+                    technical["technical_risk"] = min(
+                        100.0, float(technical.get("technical_risk", 0) or 0) + bump)
+                    warns = technical.setdefault("warnings", [])
+                    for w in (anomaly.get("warnings") or []):
+                        if w not in warns:
+                            warns.append(w)
+            try:
+                from decision import repository as drepo
+                drepo.save_regime_snapshot(symbol, regime, anomaly)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"ℹ️ regime/anomaly atlandı ({symbol}): {e.__class__.__name__}")
+
     return {
         "symbol": symbol,
         "ticker": ticker,
         "current_price": current_price,
-        "technical": technical_snapshot(df),
+        "technical": technical,
         "ai": ai_snapshot(df, symbol),
         "sentiment": sentiment_snapshot(symbol),
         "whale": whale_snapshot(symbol),
         "market_intel": market_intel_snapshot(symbol),
+        "regime": regime,
+        "anomaly": anomaly,
     }

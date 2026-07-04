@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
+from .builders import V2_BASE_FEATURES, V2_FEATURE_NAMES, V2_PLACEHOLDER_FEATURES
+
 # LSTM'in dondurulmuş 25-feature sırası (data_preprocessor.prepare_data ile birebir).
 # İlk 5 OHLCV; hedef = close (index 3); ardından 20 teknik gösterge.
 V1_LSTM_25: List[str] = [
@@ -36,8 +38,18 @@ FEATURE_SETS: Dict[str, Dict] = {
         "source": "data_preprocessor.CryptoDataPreprocessor.prepare_data(use_technical_indicators=True)",
         "description": "LSTM'in dondurulmuş 25-feature seti (5 OHLCV + 20 teknik).",
     },
-    # "v2_ensemble_advanced": Faz 3'te eklenecek (tree modelleri; ölçeksiz ham feature'lar,
-    #   regime/orderbook/futures/xasset/multi_tf aileleri, her biri optional=True).
+    "v2_ensemble_advanced": {
+        "version": "v2_ensemble_advanced",
+        "frozen": False,  # additive: yeni aile eklenebilir (v1'i ETKİLEMEZ)
+        "feature_names": V2_FEATURE_NAMES,
+        "feature_count": len(V2_FEATURE_NAMES),
+        "base_features": V2_BASE_FEATURES,
+        "placeholder_features": V2_PLACEHOLDER_FEATURES,  # Faz 6'da dolacak (şimdilik 0-default)
+        "target": "direction",  # 1=up / 0=down (forward return), horizon paramlı
+        "scaled": False,  # tree modelleri ölçeksiz ham feature kullanır (scaler'a dokunmaz)
+        "source": "features.builders.build_matrix / build_row",
+        "description": "Tree modelleri için ölçeksiz feature seti (teknik + türetilmiş + Faz6 placeholder'lar).",
+    },
 }
 
 

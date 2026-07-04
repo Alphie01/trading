@@ -28,6 +28,16 @@ class AutomationScheduler:
         except Exception as e:
             print(f"❌ Automation job hatası: {e}")
 
+        # Faz 4: model ağırlıklarını değerlendirmelerden EWMA ile güncelle (best-effort).
+        # Yalnız model_weights yazar → ensemble KAPALIYKEN (default) canlı akışa etkisi YOK.
+        try:
+            from . import feedback
+            fb = feedback.run_feedback()
+            if fb.get("updated"):
+                print(f"⚖️ Model ağırlıkları güncellendi: {fb['updated']} model")
+        except Exception as e:
+            print(f"⚠️ feedback atlandı: {e}")
+
     def _loop(self):
         try:
             import schedule

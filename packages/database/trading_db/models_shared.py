@@ -372,3 +372,27 @@ class ModelWeight(SharedBase):
     __table_args__ = (
         Index("ix_model_weights_symbol_regime_tf", "symbol", "regime", "timeframe"),
     )
+
+
+class MarketRegimeSnapshot(SharedBase):
+    """Market rejimi + anomali skorları (evren-geneli). Faz 5: kural-tabanlı regime + pump/dump risk."""
+
+    __tablename__ = "market_regime_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(30), nullable=False)
+    timeframe = Column(String(10), nullable=False, server_default="4h")
+    regime = Column(String(20))           # BULL_TREND/BEAR_TREND/SIDEWAYS/HIGH_VOLATILITY/...
+    regime_confidence = Column(Numeric(5, 4))
+    method = Column(String(20), server_default="rule")
+    adx = Column(Numeric(8, 2))
+    volatility = Column(Numeric(12, 6))
+    anomaly_score = Column(Numeric(6, 2))
+    pump_risk_score = Column(Numeric(6, 2))
+    dump_risk_score = Column(Numeric(6, 2))
+    features = Column(JSONB)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_market_regime_symbol_tf_time", "symbol", "timeframe", "computed_at"),
+    )

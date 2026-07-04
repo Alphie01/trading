@@ -32,6 +32,7 @@ _MAX = int(os.getenv("MODEL_MEMCACHE_MAX", "50"))
 
 _lstm: "dict[str, dict]" = {}
 _dqn: "dict[str, dict]" = {}
+_tree: "dict[str, dict]" = {}  # tree modelleri (RF/GB/...) — coin|model_type|feature_set anahtarı
 _locks: "dict[str, threading.RLock]" = {}
 _locks_guard = threading.Lock()
 
@@ -124,16 +125,64 @@ def store_dqn(coin: str, model) -> None:
     _evict_if_needed(_dqn)
 
 
+# --------------------------------------------------------------------------- #
+# Tree modelleri (RF/GB/ExtraTrees/HistGB) — bellek + disk (registry.file_path).
+# TF import ETMEZ; saf sklearn/joblib. AVX'siz prod'da da yüklenir.
+# --------------------------------------------------------------------------- #
+def _tree_key(coin: str, model_type: str, feature_set_version: str) -> str:
+    return f"{coin.lower()}|{model_type}|{feature_set_version}"
+
+
+def get_or_load_tree(coin: str, model_type: str = "random_forest",
+                     feature_set_version: str = "v2_ensemble_advanced"):
+    """Bellek → disk (registry.file_path). Eğitilmiş TreeDirectionModel ya da None."""
+    key = _tree_key(coin, model_type, feature_set_version)
+    entry = _tree.get(key)
+    if _fresh(entry):
+        cache_event("tree_model", coin, True)
+        return entry["model"]
+
+    try:
+        from models.registry import ModelRegistry
+        from models.tree_models import TreeDirectionModel
+
+        meta = ModelRegistry().get(coin, model_type, feature_set_version)
+        fp = (meta or {}).get("file_path")
+        if fp and os.path.exists(fp):
+            m = TreeDirectionModel.load(fp)
+            _tree[key] = {"model": m, "ts": time.time()}
+            _evict_if_needed(_tree)
+            cache_event("tree_disk", coin, True)
+            logger.info("Tree diskten yüklendi: %s/%s", coin, model_type)
+            return m
+    except Exception as e:
+        logger.warning("Tree disk load başarısız %s/%s: %s", coin, model_type, e)
+
+    cache_event("tree_model", coin, False)
+    return None
+
+
+def store_tree(coin: str, model_type: str, feature_set_version: str, model) -> None:
+    if model is None:
+        return
+    _tree[_tree_key(coin, model_type, feature_set_version)] = {"model": model, "ts": time.time()}
+    _evict_if_needed(_tree)
+
+
 def invalidate(coin: Optional[str] = None) -> None:
     """Yeniden eğitim/güncelleme sonrası cache temizliği (ör. training_scheduler)."""
     if coin is None:
         _lstm.clear()
         _dqn.clear()
+        _tree.clear()
     else:
         k = coin.lower()
         _lstm.pop(k, None)
         _dqn.pop(k, None)
+        for tk in [t for t in _tree if t.startswith(k + "|")]:
+            _tree.pop(tk, None)
 
 
 def stats() -> dict:
-    return {"lstm_cached": len(_lstm), "dqn_cached": len(_dqn), "ttl_seconds": _TTL}
+    return {"lstm_cached": len(_lstm), "dqn_cached": len(_dqn),
+            "tree_cached": len(_tree), "ttl_seconds": _TTL}
