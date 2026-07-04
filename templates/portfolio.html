@@ -366,82 +366,42 @@
     }
 
     // P&L Trend Chart - Binance verilerine dayalı
-    const ctx2 = document.getElementById('pnlChart').getContext('2d');
-
-    {% if binance_data and binance_data.get('connected', False) %}
-        // Binance gerçek verileri kullan
-        const binanceValue = {{ binance_data.get('total_portfolio_value', 0) }};
-        const investedAmount = {{ summary.get('invested_amount', binance_data.get('total_portfolio_value', 1000)) }};
-        const currentPnL = binanceValue - investedAmount;
-
-        new Chart(ctx2, {
-            type: 'line',
-            data: {
-                labels: ['1 hafta önce', '6 gün', '5 gün', '4 gün', '3 gün', '2 gün', 'Dün', 'Bugün'],
-                datasets: [{
-                    label: 'Portfolio Değeri ($)',
-                    data: [investedAmount, investedAmount + 50, investedAmount - 20, investedAmount + 100, investedAmount + 80, investedAmount + 150, investedAmount + 120, binanceValue],
-                    borderColor: '{{ "#28a745" if summary.get("unrealized_pnl", 0) >= 0 else "#dc3545" }}',
-                    backgroundColor: '{{ "rgba(40, 167, 69, 0.1)" if summary.get("unrealized_pnl", 0) >= 0 else "rgba(220, 53, 69, 0.1)" }}',
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'USD Değeri'
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: true
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return 'Portfolio: $' + context.parsed.y.toFixed(2);
-                            }
-                        }
-                    }
-                }
+    // P&L Trend — GERÇEK veri: son işlemlerden kümülatif realize PnL (sahte statik trend KALDIRILDI).
+    (function () {
+        const canvas = document.getElementById('pnlChart');
+        if (!canvas) return;
+        const ctx2 = canvas.getContext('2d');
+        const wrap = canvas.parentElement;
+        fetch('/api/recent_trades').then(r => r.json()).then(res => {
+            let trades = (res && (res.trades || res.data)) || (Array.isArray(res) ? res : []);
+            if (!Array.isArray(trades)) trades = [];
+            trades = trades.slice().sort((a, b) =>
+                new Date(a.timestamp || a.executed_at || 0) - new Date(b.timestamp || b.executed_at || 0));
+            const labels = [], data = []; let cum = 0;
+            trades.forEach(t => {
+                cum += Number(t.pnl ?? t.realized_pnl ?? t.net_pnl ?? 0) || 0;
+                labels.push(String(t.timestamp || t.executed_at || '').replace('T', ' ').slice(5, 16));
+                data.push(Number(cum.toFixed(2)));
+            });
+            if (!data.length) {
+                wrap.innerHTML = '<div style="text-align:center;padding:48px 0;color:var(--muted, #888);font-size:13px;">Henüz kapanmış işlem yok — PnL geçmişi oluşmadı.</div>';
+                return;
             }
+            const up = cum >= 0;
+            new Chart(ctx2, {
+                type: 'line',
+                data: { labels, datasets: [{ label: 'Kümülatif PnL ($)', data,
+                    borderColor: up ? '#0ECB81' : '#F6465D',
+                    backgroundColor: up ? 'rgba(14,203,129,.1)' : 'rgba(246,70,93,.1)',
+                    fill: true, tension: 0.35, pointRadius: 2 }] },
+                options: { responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { title: { display: true, text: 'USD' } } } }
+            });
+        }).catch(() => {
+            wrap.innerHTML = '<div style="text-align:center;padding:48px 0;color:var(--muted, #888);font-size:13px;">PnL geçmişi yüklenemedi.</div>';
         });
-    {% else %}
-        // Fallback - database verileri kullan
-        new Chart(ctx2, {
-            type: 'line',
-            data: {
-                labels: ['1 hafta önce', '6 gün', '5 gün', '4 gün', '3 gün', '2 gün', 'Dün', 'Bugün'],
-                datasets: [{
-                    label: 'P&L ($)',
-                    data: [0, 50, -20, 100, 80, 150, 120, {{ summary.get('unrealized_pnl', 0) }}],
-                    borderColor: '{{ "#28a745" if summary.get("unrealized_pnl", 0) >= 0 else "#dc3545" }}',
-                    backgroundColor: '{{ "rgba(40, 167, 69, 0.1)" if summary.get("unrealized_pnl", 0) >= 0 else "rgba(220, 53, 69, 0.1)" }}',
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                }
-            }
-        });
-    {% endif %}
+    })();
 
     function closePosition(symbol, positionType) {
         if (confirm(`${symbol} ${positionType} pozisyonu kapatılsın mı?`)) {

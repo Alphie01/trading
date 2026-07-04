@@ -113,6 +113,10 @@
                             </label>
                         </div>
                     </div>
+                    <div class="mb-2"><span id="binanceStatus" class="dim" style="font-size:12px;">—</span></div>
+                    <button class="btn btn-pa btn-sm" onclick="saveBinanceKeys()"><i class="fas fa-lock me-1"></i>Binance Keylerini Kaydet</button>
+                    <span id="binanceSaveMsg" class="ms-2 small"></span>
+                    <div class="form-text mt-1">🔒 Tenant'a özel, AES-256-GCM ile <b>şifreli</b> saklanır. Diğer ayarlar .env'den.</div>
                 </div>
 
                 <div class="col-md-6">
@@ -459,6 +463,41 @@
     function testApiConnections() {
         alert('API bağlantıları test ediliyor...\n\n✅ Binance API: Aktif\n❌ NewsAPI: Anahtar gerekli\n❌ Whale Alert: Anahtar gerekli');
     }
+
+    // ── Binance keyleri: tenant-özel, ŞİFRELİ kaydet/yükle ──
+    function saveBinanceKeys() {
+        const key = (document.getElementById('binanceApiKey').value || '').trim();
+        const secret = (document.getElementById('binanceSecretKey').value || '').trim();
+        const testnet = document.getElementById('enableTestnet').checked;
+        const msg = document.getElementById('binanceSaveMsg');
+        const payload = { binance_testnet: testnet };
+        if (key) payload.binance_api_key = key;
+        if (secret) payload.binance_secret_key = secret;
+        msg.textContent = 'Kaydediliyor…'; msg.className = 'ms-2 small dim';
+        fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+            .then(r => r.json()).then(d => {
+                if (d.success) {
+                    msg.textContent = '✅ Şifreli kaydedildi'; msg.className = 'ms-2 small text-success';
+                    document.getElementById('binanceApiKey').value = '';
+                    document.getElementById('binanceSecretKey').value = '';
+                    loadBinanceStatus();
+                } else { msg.textContent = '❌ ' + (d.error || 'hata'); msg.className = 'ms-2 small text-danger'; }
+            }).catch(e => { msg.textContent = '❌ ' + e; msg.className = 'ms-2 small text-danger'; });
+    }
+
+    function loadBinanceStatus() {
+        fetch('/api/settings').then(r => r.json()).then(d => {
+            const b = (d && d.binance) || {}; const el = document.getElementById('binanceStatus');
+            if (!el) return;
+            if (b.configured) el.innerHTML = `🔒 Tenant key kayıtlı: <code>${b.api_key_masked}</code> · ${b.testnet ? 'TESTNET' : 'LIVE'}`;
+            else if (b.source === 'env') el.innerHTML = `⚙️ .env'den okunuyor (tenant-özel key yok)`;
+            else el.innerHTML = `⚠️ Key tanımlı değil`;
+            if (typeof b.testnet === 'boolean') document.getElementById('enableTestnet').checked = b.testnet;
+            document.getElementById('binanceApiKey').placeholder = b.configured
+                ? 'Kayıtlı — değiştirmek için yeni key girin' : 'Binance API anahtarınızı girin...';
+        }).catch(() => {});
+    }
+    document.addEventListener('DOMContentLoaded', loadBinanceStatus);
 
     function clearModelCache() {
         if (confirm('Model cache temizlensin mi? Bu işlem geri alınamaz.')) {

@@ -254,7 +254,7 @@ def _open(schema: str, run: Dict, symbol: str, side: str, market_price: float,
             "entry_price": fill["price"], "current_price": fill["price"], "quantity": qty,
             "notional_value": fill["notional"], "entry_fee": fill["fee"],
             "entry_signal_id": score.get("signal_id"), "entry_reason": reason,
-            "metadata": {"opportunity_score": score.get("opportunity_score"), "risk_score": score.get("risk_score")},
+            "metadata": {"opportunity_score": score.get("opportunity_score"), "risk_score": score.get("risk_score"), "regime": score.get("regime")},
         })
         _trade(schema, run["id"], pos_id, symbol, "BUY", fill, cs, reason)
         return -cost, True

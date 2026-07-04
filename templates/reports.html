@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Reports · Paera Terminal{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div><h1><i class="fas fa-file-invoice me-2 dim"></i>Reports</h1>
+        <div class="sub">Fırsat/risk skorları, öneri dağılımı ve simülasyon rapor kısayolları</div></div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-ghost" href="{{ url_for('simulation_list') }}"><i class="fas fa-flask-vial me-1"></i>Simülasyon Raporları</a>
+        <button class="btn btn-ghost" onclick="load()"><i class="fas fa-rotate me-1"></i>Yenile</button>
+    </div>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-6 col-xl-3"><div class="kpi"><div class="kpi__label"><i class="fas fa-list"></i> Skorlanan Coin</div><div class="kpi__value" id="kTotal">—</div></div></div>
+    <div class="col-6 col-xl-3"><div class="kpi"><div class="kpi__label"><i class="fas fa-arrow-up"></i> BUY</div><div class="kpi__value pos" id="kBuy">—</div></div></div>
+    <div class="col-6 col-xl-3"><div class="kpi"><div class="kpi__label"><i class="fas fa-pause"></i> HOLD</div><div class="kpi__value" id="kHold">—</div></div></div>
+    <div class="col-6 col-xl-3"><div class="kpi"><div class="kpi__label"><i class="fas fa-arrow-down"></i> SELL</div><div class="kpi__value neg" id="kSell">—</div></div></div>
+</div>
+<div class="panel">
+    <div class="panel__head"><h2><i class="fas fa-ranking-star me-2 dim"></i>En Yüksek Fırsat Skorları</h2></div>
+    <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Sembol</th><th>Öneri</th><th>Fırsat</th><th>Risk</th><th>Teknik</th><th>AI</th><th>Haber</th><th>Hype</th><th>Zaman</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="9" class="muted text-center py-4">Yükleniyor…</td></tr></tbody>
+    </table></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const $=(i)=>document.getElementById(i);
+const j=(u,o)=>fetch(u,o).then(r=>r.json()).catch(e=>({success:false,error:String(e)}));
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num=v=>(v==null||isNaN(v))?'—':(+v).toFixed(0);
+function recPill(s){s=(s||'').toUpperCase();const m={BUY:'green',STRONG_BUY:'green',SELL:'red',STRONG_SELL:'red',HOLD:'gray'};return `<span class="pill ${m[s]||'gray'}">${esc(s||'—')}</span>`;}
+async function load(){
+  const r=await j('/api/automation/scores');
+  if(!r.success){$('rows').innerHTML=`<tr><td colspan="9" class="neg text-center py-4">${esc(r.error)}</td></tr>`;return;}
+  const sc=(r.scores||[]).slice().sort((a,b)=>(+b.opportunity_score||0)-(+a.opportunity_score||0));
+  $('kTotal').textContent=sc.length;
+  $('kBuy').textContent=sc.filter(s=>/BUY/.test((s.recommendation||'').toUpperCase())).length;
+  $('kHold').textContent=sc.filter(s=>(s.recommendation||'').toUpperCase()==='HOLD').length;
+  $('kSell').textContent=sc.filter(s=>/SELL/.test((s.recommendation||'').toUpperCase())).length;
+  $('rows').innerHTML = sc.length ? sc.slice(0,40).map(s=>`<tr>
+      <td><a href="/automation/coin/${encodeURIComponent((s.symbol||'').split('/')[0])}"><strong>${esc(s.symbol)}</strong></a></td>
+      <td>${recPill(s.recommendation)}</td>
+      <td class="num pos">${num(s.opportunity_score)}</td>
+      <td class="num neg">${num(s.risk_score)}</td>
+      <td class="num">${num(s.technical_score)}</td>
+      <td class="num">${num(s.ai_prediction_score)}</td>
+      <td class="num">${num(s.news_quality_score)}</td>
+      <td class="num ${(+s.hype_risk>=70)?'neg':'dim'}">${num(s.hype_risk)}</td>
+      <td class="dim" style="font-size:11px;">${s.scored_at?new Date(s.scored_at).toLocaleString('tr-TR'):'—'}</td></tr>`).join('')
+    : `<tr><td colspan="9" class="muted text-center py-4">Henüz skor yok. Market Scanner'da tarama/araştırma yapın.</td></tr>`;
+}
+document.addEventListener('DOMContentLoaded',()=>{load();setInterval(load,30000);});
+</script>
+{% endblock %}

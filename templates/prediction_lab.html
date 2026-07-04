@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Prediction Lab · Paera Terminal{% endblock %}
+
+{% block head %}
+<style>
+    .lab-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+    .lab-controls input, .lab-controls select {
+        background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+        border-radius: 7px; padding: 7px 10px; font-size: 13px; font-family: 'IBM Plex Mono', monospace;
+    }
+    .lab-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .lab-panel h2 { font-size: 13px; letter-spacing: .4px; color: var(--text-2); margin: 0 0 10px; text-transform: uppercase; }
+    table.lab { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    table.lab th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+    table.lab td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--text-2); font-family: 'IBM Plex Mono', monospace; }
+    table.lab tr:hover td { background: var(--surface-2); }
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+    .pos { color: var(--green); } .neg { color: var(--red); } .neu { color: var(--text-2); }
+    .pill { font-family: 'IBM Plex Mono', monospace; font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-2); }
+    .pill.buy { color: var(--green); background: var(--green-dim); border-color: rgba(14,203,129,.3); }
+    .pill.sell { color: var(--red); background: rgba(246,70,93,.12); border-color: rgba(246,70,93,.3); }
+    .pill.hold { color: var(--yellow); background: var(--yellow-dim); border-color: rgba(240,185,11,.3); }
+    .reason-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .reason-chip { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; padding: 4px 9px; border-radius: 6px; background: rgba(246,70,93,.10); border: 1px solid rgba(246,70,93,.25); color: var(--red); }
+    .empty { padding: 26px; text-align: center; color: var(--muted); font-size: 13px; }
+    .lab-note { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1><i class="fas fa-microchip me-2"></i>Prediction Lab</h1>
+        <div class="sub">Model performansı · ensemble kararları · false-signal analizi · walk-forward</div>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-ghost" id="btnWeights"><i class="fas fa-scale-balanced me-1"></i>Ağırlıkları Güncelle</button>
+        <button class="btn btn-ghost" id="btnRefresh"><i class="fas fa-rotate me-1"></i>Yenile</button>
+    </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+    <div class="lab-controls">
+        <input id="symIn" placeholder="BTC/USDT" style="width:150px;">
+        <select id="algoIn">
+            <option value="random_forest">random_forest</option>
+            <option value="gradient_boosting">gradient_boosting</option>
+            <option value="extra_trees">extra_trees</option>
+            <option value="hist_gb">hist_gb</option>
+        </select>
+        <button class="btn btn-pa" id="btnTrain"><i class="fas fa-graduation-cap me-1"></i>Tree Modeli Eğit</button>
+        <button class="btn btn-ghost" id="btnEval"><i class="fas fa-vial me-1"></i>Walk-Forward Değerlendir</button>
+        <span class="lab-note" id="actionMsg"></span>
+    </div>
+    <div class="lab-note">Eğitim/değerlendirme arka planda çalışır; birkaç saniye sonra "Yenile" ile sonuçları görün. Gerçek trade YOK.</div>
+</div>
+
+<div class="lab-grid">
+    <div class="panel lab-panel">
+        <h2><i class="fas fa-chart-line me-1"></i> Model Performance</h2>
+        <div class="table-wrap"><table class="lab"><thead><tr>
+            <th>Symbol</th><th>Model</th><th>Feature Set</th><th>Train Acc</th><th>Walk-Forward Acc</th><th>Feat</th><th>Last Trained</th>
+        </tr></thead><tbody id="perfBody"><tr><td colspan="7" class="empty">Yükleniyor…</td></tr></tbody></table></div>
+    </div>
+
+    <div class="panel lab-panel">
+        <h2><i class="fas fa-scale-balanced me-1"></i> Model Weights (dinamik)</h2>
+        <div class="table-wrap"><table class="lab"><thead><tr>
+            <th>Symbol</th><th>Model</th><th>Regime</th><th>Weight</th><th>Win Rate</th><th>Profit Factor</th><th>Samples</th>
+        </tr></thead><tbody id="weightBody"><tr><td colspan="7" class="empty">Yükleniyor…</td></tr></tbody></table></div>
+    </div>
+
+    <div class="panel lab-panel">
+        <h2><i class="fas fa-vial me-1"></i> Walk-Forward Results</h2>
+        <div class="table-wrap"><table class="lab"><thead><tr>
+            <th>Symbol</th><th>Model</th><th>Directional Acc</th><th>Samples</th><th>Folds</th><th>When</th>
+        </tr></thead><tbody id="wfBody"><tr><td colspan="6" class="empty">Yükleniyor…</td></tr></tbody></table></div>
+    </div>
+
+    <div class="panel lab-panel">
+        <h2><i class="fas fa-diagram-project me-1"></i> Ensemble Decisions</h2>
+        <div class="table-wrap"><table class="lab"><thead><tr>
+            <th>Symbol</th><th>Regime</th><th>Final</th><th>Confidence</th><th>Opp</th><th>Risk</th><th>Data Q</th><th>Blocked</th><th>When</th>
+        </tr></thead><tbody id="decBody"><tr><td colspan="9" class="empty">Yükleniyor…</td></tr></tbody></table></div>
+    </div>
+
+    <div class="panel lab-panel">
+        <h2><i class="fas fa-triangle-exclamation me-1"></i> False Signal Analysis</h2>
+        <div class="reason-chips" id="reasonChips" style="margin-bottom:12px;"></div>
+        <div class="table-wrap"><table class="lab"><thead><tr>
+            <th>Symbol</th><th>Regime</th><th>Bucket</th><th>Win Rate</th><th>Profit Factor</th><th>Quality</th><th>Samples</th>
+        </tr></thead><tbody id="fbBody"><tr><td colspan="7" class="empty">Yükleniyor…</td></tr></tbody></table></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (id) => document.getElementById(id);
+const j = (r) => r.json();
+const pct = (v) => v == null ? '—' : (Number(v) * 100).toFixed(1) + '%';
+const num = (v, d = 4) => v == null ? '—' : Number(v).toFixed(d);
+const esc = (s) => (s == null ? '' : String(s)).replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
+const shortDate = (s) => s ? s.replace('T', ' ').slice(0, 16) : '—';
+function recPill(a) { const t = (a || 'HOLD').toUpperCase(); const c = t.includes('BUY') ? 'buy' : (t.includes('SELL') ? 'sell' : 'hold'); return `<span class="pill ${c}">${esc(t)}</span>`; }
+function msg(t) { $('actionMsg').textContent = t; setTimeout(() => { if ($('actionMsg').textContent === t) $('actionMsg').textContent = ''; }, 6000); }
+
+async function loadPerformance() {
+    const d = await fetch('/api/models/performance').then(j);
+    const models = (d.models || []);
+    $('perfBody').innerHTML = models.length ? models.map(m => {
+        const wf = ((m.metrics || {}).walk_forward || {}).directional_accuracy;
+        const tr = ((m.metrics || {}).train || {}).train_accuracy;
+        return `<tr><td>${esc(m.coin_symbol)}</td><td>${esc(m.model_type)}</td>
+            <td class="neu">${esc((m.config || {}).feature_set_version || '—')}</td>
+            <td>${tr == null ? '—' : num(tr)}</td>
+            <td class="${wf >= 0.5 ? 'pos' : 'neg'}">${wf == null ? '—' : num(wf)}</td>
+            <td>${m.feature_count ?? '—'}</td><td class="neu">${shortDate(m.last_trained)}</td></tr>`;
+    }).join('') : '<tr><td colspan="7" class="empty">Henüz kayıtlı model yok — bir sembol için "Tree Modeli Eğit".</td></tr>';
+
+    const w = (d.weights || []);
+    $('weightBody').innerHTML = w.length ? w.map(x => `<tr>
+        <td>${esc(x.symbol)}</td><td>${esc(x.model_type)}</td><td class="neu">${esc(x.regime)}</td>
+        <td>${num(x.weight)}</td><td>${x.win_rate == null ? '—' : x.win_rate + '%'}</td>
+        <td>${num(x.profit_factor, 2)}</td><td>${x.sample_count ?? '—'}</td></tr>`).join('')
+        : '<tr><td colspan="7" class="empty">Ağırlık yok — modeller eğitilip "Ağırlıkları Güncelle" çalışınca dolar.</td></tr>';
+}
+
+async function loadWalkForward() {
+    const d = await fetch('/api/models/walk-forward-results').then(j);
+    const r = (d.results || []);
+    $('wfBody').innerHTML = r.length ? r.map(e => {
+        const da = (e.metrics || {}).directional_accuracy;
+        return `<tr><td>${esc(e.symbol)}</td><td>${esc(e.model_type)}</td>
+            <td class="${da >= 0.5 ? 'pos' : 'neg'}">${da == null ? '—' : num(da)}</td>
+            <td>${e.sample_count ?? '—'}</td><td>${(e.folds || []).length}</td>
+            <td class="neu">${shortDate(e.created_at)}</td></tr>`;
+    }).join('') : '<tr><td colspan="6" class="empty">Walk-forward sonucu yok — "Walk-Forward Değerlendir" ya da model eğitin.</td></tr>';
+}
+
+async function loadDecisions() {
+    const d = await fetch('/api/models/ensemble-decisions').then(j);
+    const r = (d.decisions || []);
+    $('decBody').innerHTML = r.length ? r.map(x => `<tr>
+        <td>${esc(x.symbol)}</td><td class="neu">${esc(x.regime || '—')}</td><td>${recPill(x.final_action)}</td>
+        <td>${num(x.confidence)}</td><td>${num(x.opportunity_score, 1)}</td><td>${num(x.risk_score, 1)}</td>
+        <td>${num(x.data_quality)}</td>
+        <td class="${(x.blocked_reasons || []).length ? 'neg' : 'neu'}">${(x.blocked_reasons || []).join(', ') || '—'}</td>
+        <td class="neu">${shortDate(x.created_at)}</td></tr>`).join('')
+        : '<tr><td colspan="9" class="empty">Karar yok — Decision Layer açık (AUTO_DECISION_LAYER_ENABLED) + research çalışınca dolar.</td></tr>';
+}
+
+async function loadFalseSignals() {
+    const d = await fetch('/api/models/false-signals').then(j);
+    const totals = d.reason_totals || {};
+    $('reasonChips').innerHTML = Object.keys(totals).length
+        ? Object.entries(totals).map(([r, c]) => `<span class="reason-chip">${esc(r)} · ${c}</span>`).join('')
+        : '<span class="lab-note">Kaybeden sinyal analizi henüz yok.</span>';
+    const fb = (d.feedback || []);
+    $('fbBody').innerHTML = fb.length ? fb.map(f => `<tr>
+        <td>${esc(f.symbol)}</td><td class="neu">${esc(f.regime)}</td><td class="neu">${esc(f.signal_bucket)}</td>
+        <td>${f.win_rate == null ? '—' : f.win_rate + '%'}</td><td>${num(f.profit_factor, 2)}</td>
+        <td>${num(f.quality_score)}</td><td>${f.sample_count ?? '—'}</td></tr>`).join('')
+        : '<tr><td colspan="7" class="empty">Sinyal geri bildirimi yok — simülasyon işlemleri kapanınca dolar.</td></tr>';
+}
+
+function loadAll() { loadPerformance(); loadWalkForward(); loadDecisions(); loadFalseSignals(); }
+
+async function post(url, body, okMsg) {
+    try {
+        const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})}).then(j);
+        msg(r.success ? (r.message || okMsg) : ('Hata: ' + (r.error || '')));
+    } catch (e) { msg('Hata: ' + e); }
+}
+
+$('btnTrain').onclick = () => { const s = $('symIn').value.trim(); if (!s) return msg('Sembol gir (ör. BTC/USDT)'); post('/api/models/retrain', {symbol: s, algo: $('algoIn').value}, 'Eğitim başlatıldı'); };
+$('btnEval').onclick = () => { const s = $('symIn').value.trim(); if (!s) return msg('Sembol gir (ör. BTC/USDT)'); post('/api/models/evaluate', {symbol: s}, 'Değerlendirme başlatıldı'); };
+$('btnWeights').onclick = () => post('/api/models/update-weights', {}, 'Ağırlık güncellemesi başlatıldı');
+$('btnRefresh').onclick = loadAll;
+loadAll();
+</script>
+{% endblock %}

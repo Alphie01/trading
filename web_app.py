@@ -100,6 +100,14 @@ except Exception as scheduler_init_error:
     print(f"⚠️ Training Scheduler başlatma hatası: {scheduler_init_error}")
     training_scheduler = None
 
+# Automation scheduler'ı başlat (thread hep döner; iş yalnız AUTO_DISCOVERY_ENABLED=true iken çalışır).
+# Otomatik döngü: discovery → research → sinyal → (simülasyon işleme) — her AUTO_DISCOVERY_INTERVAL_MINUTES.
+try:
+    from automation.scheduler import get_scheduler as _get_auto_scheduler
+    _get_auto_scheduler().start()
+except Exception as _auto_sched_err:
+    print(f"⚠️ Automation scheduler başlatma hatası: {_auto_sched_err}")
+
 # Authentication setup
 auth_manager = AuthManager(db)
 login_manager = setup_login_manager(app, auth_manager)
@@ -118,13 +126,51 @@ def _bind_tenant_context():
         clear_current_tenant()
 
 
+# ── Tenant-özel Binance kimlik bilgileri (aktif tenant DB'sinde ŞİFRELİ; yoksa .env fallback) ──
+def get_tenant_binance():
+    """Aktif tenant'ın DB'de saklı (AES-GCM şifreli) Binance kimlik bilgileri; yoksa None."""
+    try:
+        from crypto_util import decrypt
+        creds = db.load_system_state('binance_credentials', {}) or {}
+        api_key = decrypt(creds.get('api_key', ''))
+        secret_key = decrypt(creds.get('secret_key', ''))
+        if api_key and secret_key:
+            return {'api_key': api_key, 'secret_key': secret_key,
+                    'testnet': bool(creds.get('testnet', False))}
+    except Exception as e:
+        print(f"⚠️ tenant binance creds okunamadı: {e}")
+    return None
+
+
+def save_tenant_binance(api_key, secret_key, testnet):
+    """Binance kimlik bilgilerini AKTİF tenant için ŞİFRELİ (AES-256-GCM) kaydeder."""
+    from crypto_util import encrypt
+    db.save_system_state('binance_credentials', {
+        'api_key': encrypt((api_key or '').strip()),
+        'secret_key': encrypt((secret_key or '').strip()),
+        'testnet': bool(testnet),
+    })
+
+
+def resolve_binance_creds():
+    """(api_key, secret_key, testnet): önce tenant DB (şifreli), yoksa .env fallback."""
+    t = get_tenant_binance()
+    if t:
+        return t['api_key'], t['secret_key'], t['testnet']
+    return (os.getenv('BINANCE_API_KEY'), os.getenv('BINANCE_SECRET_KEY'),
+            os.getenv('BINANCE_TESTNET', 'true').lower() == 'true')
+
+
 # Tüm template'lere çalışma modu (Binance testnet/live) enjekte edilir → topbar rozeti gerçek modu gösterir.
 @app.context_processor
 def _inject_mode():
-    testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
+    try:
+        _, _, testnet = resolve_binance_creds()
+    except Exception:
+        testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
     exchange_type = os.getenv('AUTO_EXCHANGE_TYPE', 'spot')
     return {
-        'binance_testnet': testnet,
+        'binance_testnet': bool(testnet),
         'binance_mode': 'TESTNET' if testnet else 'LIVE',
         'exchange_type': exchange_type.upper(),
     }
@@ -218,29 +264,39 @@ def api_automation_signals():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/automation/coin/<symbol>')
+def _norm_symbol(symbol):
+    """URL sembolünü DB formatına normalize et: 'btc' → 'BTC/USDT', 'BTC/USDT' → 'BTC/USDT'."""
+    sym = (symbol or '').upper().strip()
+    if sym and '/' not in sym:
+        sym += '/USDT'
+    return sym
+
+
+@app.route('/api/automation/coin/<path:symbol>')
 @login_required
 def api_automation_coin(symbol):
     try:
         from automation import repository as arepo
+        sym = _norm_symbol(symbol)
         return jsonify({
             'success': True,
-            'detail': arepo.get_coin_detail(symbol),
-            'history': arepo.get_score_history(symbol),
+            'detail': arepo.get_coin_detail(sym),
+            'history': arepo.get_score_history(sym),
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/automation/coin/<symbol>/research', methods=['POST'])
+@app.route('/api/automation/coin/<path:symbol>/research', methods=['POST'])
 @login_required
 def api_automation_coin_research(symbol):
     try:
         from automation.engine import run_research
-        out = run_research(symbols=[symbol.upper()], persist=True)
+        sym = _norm_symbol(symbol)
+        out = run_research(symbols=[sym], persist=True)
         from automation import repository as arepo
-        return jsonify({'success': True, 'detail': arepo.get_coin_detail(symbol),
-                        'history': arepo.get_score_history(symbol),
+        return jsonify({'success': True, 'detail': arepo.get_coin_detail(sym),
+                        'history': arepo.get_score_history(sym),
                         'signal': (out.get('signals') or [None])[0]})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -263,6 +319,153 @@ def api_automation_settings():
         if not ok:
             return jsonify({'success': False, 'error': 'Kaydedilemedi (default tenant yok olabilir)'}), 500
         return jsonify({'success': True, 'settings': AC.current_settings(), 'message': 'Otomasyon ayarları kaydedildi'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Prediction Lab / Models API (Faz 9) — model performansı, ensemble kararları,
+# false-signal analizi, walk-forward. Ağır işler background thread'e verilir (request kilitlenmez).
+# ───────────────────────────────────────────────────────────────────────────
+def _lab_schema():
+    from flask_login import current_user
+    schema = getattr(current_user, 'tenant_schema', None)
+    if schema:
+        return schema
+    from automation import tenant_repo
+    return tenant_repo.default_tenant_schema()
+
+
+@app.route('/prediction-lab')
+@login_required
+def prediction_lab():
+    return render_template('prediction_lab.html')
+
+
+@app.route('/api/models/registry')
+@login_required
+def api_models_registry():
+    try:
+        from models import repository as mrepo
+        return jsonify({'success': True, 'models': mrepo.list_models(coin_symbol=request.args.get('symbol'))})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/performance')
+@app.route('/api/models/performance/<symbol>')
+@login_required
+def api_models_performance(symbol=None):
+    try:
+        from models import repository as mrepo
+        sym = symbol or request.args.get('symbol')
+        return jsonify({'success': True,
+                        'models': mrepo.list_models(coin_symbol=sym),
+                        'weights': mrepo.get_weights(symbol=(sym.upper() if sym else None))})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/walk-forward-results')
+@login_required
+def api_models_walk_forward():
+    try:
+        from evaluation import repository as evrepo
+        evs = evrepo.get_evaluations(symbol=request.args.get('symbol'), limit=100)
+        return jsonify({'success': True,
+                        'results': [e for e in evs if e.get('eval_type') == 'walk_forward']})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/ensemble-decisions')
+@login_required
+def api_models_ensemble_decisions():
+    try:
+        from decision import tenant_repo as dtr
+        schema = _lab_schema()
+        return jsonify({'success': True,
+                        'decisions': dtr.recent_decisions(schema, symbol=request.args.get('symbol')) if schema else []})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/false-signals')
+@login_required
+def api_models_false_signals():
+    try:
+        from models import repository as mrepo
+        fb = mrepo.get_signal_feedback(symbol=request.args.get('symbol'))
+        reason_totals = {}
+        for f in fb:
+            for r, c in (f.get('false_signal_reasons') or {}).items():
+                reason_totals[r] = reason_totals.get(r, 0) + int(c)
+        return jsonify({'success': True, 'feedback': fb,
+                        'reason_totals': dict(sorted(reason_totals.items(), key=lambda kv: -kv[1]))})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/evaluate', methods=['POST'])
+@login_required
+def api_models_evaluate():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        symbol = (data.get('symbol') or '').upper()
+        if not symbol:
+            return jsonify({'success': False, 'error': 'symbol gerekli'}), 400
+
+        def _job():
+            try:
+                from evaluation.runner import run_walk_forward_eval
+                run_walk_forward_eval(symbol, timeframe=data.get('timeframe', '4h'),
+                                      horizon=int(data.get('horizon', 1)), persist=True)
+            except Exception as e:
+                print(f"❌ evaluate job hatası: {e}")
+        import threading
+        threading.Thread(target=_job, daemon=True).start()
+        return jsonify({'success': True, 'message': f'{symbol} walk-forward değerlendirmesi başlatıldı (arka plan)'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/retrain', methods=['POST'])
+@login_required
+def api_models_retrain():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        symbol = (data.get('symbol') or '').upper()
+        algo = data.get('algo', 'random_forest')
+        if not symbol:
+            return jsonify({'success': False, 'error': 'symbol gerekli'}), 400
+
+        def _job():
+            try:
+                from models.trainer import train_tree_model
+                train_tree_model(symbol, algo=algo, timeframe=data.get('timeframe', '4h'),
+                                 horizon=int(data.get('horizon', 1)), persist=True)
+            except Exception as e:
+                print(f"❌ retrain job hatası: {e}")
+        import threading
+        threading.Thread(target=_job, daemon=True).start()
+        return jsonify({'success': True, 'message': f'{symbol} {algo} tree modeli eğitimi başlatıldı (arka plan)'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/update-weights', methods=['POST'])
+@login_required
+def api_models_update_weights():
+    try:
+        def _job():
+            try:
+                from automation import feedback
+                feedback.run_feedback()
+            except Exception as e:
+                print(f"❌ update-weights job hatası: {e}")
+        import threading
+        threading.Thread(target=_job, daemon=True).start()
+        return jsonify({'success': True, 'message': 'Model ağırlıkları güncelleniyor (walk-forward + simülasyon, arka plan)'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -411,10 +614,36 @@ def api_simulation_signal_accuracy(sid):
 @login_required
 def api_settings():
     try:
+        from crypto_util import decrypt, mask
         if request.method == 'GET':
-            return jsonify({'success': True, 'settings': db.load_system_state('user_settings', {})})
+            creds = db.load_system_state('binance_credentials', {}) or {}
+            dec_key = decrypt(creds.get('api_key', ''))
+            return jsonify({
+                'success': True,
+                'settings': db.load_system_state('user_settings', {}),
+                'binance': {
+                    'configured': bool(dec_key),
+                    'api_key_masked': mask(dec_key),
+                    'testnet': bool(creds.get('testnet', False)),
+                    'source': 'tenant' if dec_key else ('env' if os.getenv('BINANCE_API_KEY') else 'none'),
+                },
+            })
         data = request.get_json(force=True, silent=True) or {}
-        db.save_system_state('user_settings', data)
+        # Binance kimlik bilgileri → AYRI + ŞİFRELİ + tenant-özel (user_settings'e DÜZ yazma!)
+        b_key = data.pop('binance_api_key', None)
+        b_secret = data.pop('binance_secret_key', None)
+        b_testnet = data.pop('binance_testnet', None)
+        if b_key is not None or b_secret is not None or b_testnet is not None:
+            cur = get_tenant_binance() or {}
+            # Boş key gönderilirse mevcut key KORUNUR (sadece testnet güncellenebilir)
+            api_key = (b_key or cur.get('api_key') or '').strip()
+            secret_key = (b_secret or cur.get('secret_key') or '').strip()
+            testnet = (str(b_testnet).lower() in ('1', 'true', 'yes', 'on')
+                       if b_testnet is not None else bool(cur.get('testnet', False)))
+            if api_key and secret_key:
+                save_tenant_binance(api_key, secret_key, testnet)
+        if data:
+            db.save_system_state('user_settings', data)
         return jsonify({'success': True, 'message': 'Ayarlar kaydedildi'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -461,9 +690,7 @@ class CoinMonitor:
             
             # Auto trading setup
             trading_enabled = os.getenv('AUTO_TRADING_ENABLED', 'false').lower() == 'true'
-            binance_key = os.getenv('BINANCE_API_KEY')
-            binance_secret = os.getenv('BINANCE_SECRET_KEY')
-            testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
+            binance_key, binance_secret, testnet = resolve_binance_creds()
             
             if trading_enabled and binance_key and binance_secret:
                 trader = BinanceTrader(binance_key, binance_secret, testnet)
@@ -1115,9 +1342,7 @@ class CoinMonitor:
             # Binance API'den gerçek bakiye al
             from binance_history import BinanceHistoryFetcher
             
-            api_key = os.getenv('BINANCE_API_KEY')
-            api_secret = os.getenv('BINANCE_SECRET_KEY')
-            testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
+            api_key, api_secret, testnet = resolve_binance_creds()
             
             if api_key and api_secret:
                 fetcher = BinanceHistoryFetcher(api_key, api_secret, testnet)
@@ -2079,9 +2304,7 @@ def portfolio():
         try:
             from binance_history import BinanceHistoryFetcher
             
-            api_key = os.getenv('BINANCE_API_KEY')
-            api_secret = os.getenv('BINANCE_SECRET_KEY')
-            testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
+            api_key, api_secret, testnet = resolve_binance_creds()
             
             if api_key and api_secret:
                 fetcher = BinanceHistoryFetcher(api_key, api_secret, testnet)
@@ -2202,11 +2425,11 @@ def automation_dashboard():
     return render_template('automation.html')
 
 
-@app.route('/automation/coin/<symbol>')
+@app.route('/automation/coin/<path:symbol>')
 @login_required
 def automation_coin_detail(symbol):
-    """Tek coin research detay sayfası."""
-    return render_template('automation_coin.html', symbol=symbol.upper())
+    """Tek coin research detay sayfası. Sembol base olarak template'e verilir (API'de /USDT normalize edilir)."""
+    return render_template('automation_coin.html', symbol=(symbol or '').upper().split('/')[0])
 
 
 @app.route('/simulation')
@@ -2250,21 +2473,31 @@ def simulation_html_alias():
 
 
 @app.route('/signals')
+@login_required
 def signals_alias():
-    """Sinyaller şimdilik Automation kokpitinde gösteriliyor."""
-    return redirect(url_for('automation_dashboard'))
+    """Sinyaller sayfası — automation sinyalleri + uyarıları."""
+    return render_template('signals.html')
 
 
 @app.route('/watchlist')
+@login_required
 def watchlist_alias():
-    """Watchlist şimdilik Automation kokpitinde gösteriliyor."""
-    return redirect(url_for('automation_dashboard'))
+    """Watchlist sayfası — izlemeye alınan coinler (watchlist statülü adaylar)."""
+    return render_template('watchlist.html')
+
+
+@app.route('/research-queue')
+@login_required
+def research_queue():
+    """Research Queue — araştırma kuyruğundaki coinler."""
+    return render_template('research_queue.html')
 
 
 @app.route('/reports')
+@login_required
 def reports_alias():
-    """Raporlar şimdilik Simülasyon detay sekmelerinde gösteriliyor."""
-    return redirect(url_for('simulation_list'))
+    """Reports — fırsat skorları, tarama turları ve simülasyon rapor kısayolları."""
+    return render_template('reports.html')
 
 
 @app.route('/api/train_coin', methods=['GET', 'POST'])
@@ -2311,8 +2544,14 @@ def api_train_coin():
         return jsonify({'success': False, 'error': 'Coin sembolü gerekli (symbol)'}), 400
 
     try:
-        if not data_fetcher.validate_symbol(symbol):
-            return jsonify({'success': False, 'error': f'{symbol} geçerli bir sembol değil'}), 400
+        # NOT: validate_symbol Binance market listesini çeker (ağ). Ağ/erişim yoksa False döner ve
+        # kullanıcıyı boşuna engeller. Bu yüzden BLOKLAMIYORUZ — yalnız uyarı; gerçek doğrulama
+        # arka plandaki veri çekiminde yapılır (geçersiz/erişilemezse eğitim orada güvenle düşer).
+        try:
+            if data_fetcher.validate_symbol(symbol) is False:
+                logger.info(f"train_coin: {symbol} doğrulanamadı (geçersiz veya Binance erişilemez) — yine de deneniyor")
+        except Exception as _ve:
+            logger.info(f"train_coin: sembol doğrulama atlandı ({symbol}): {_ve}")
 
         # İzleme listesine ekle (idempotent) + haftalık schedule'a al
         try:
@@ -2476,9 +2715,7 @@ def test_binance_api():
         from binance_history import BinanceHistoryFetcher
         
         # Environment'den API bilgilerini al
-        api_key = os.getenv('BINANCE_API_KEY')
-        api_secret = os.getenv('BINANCE_SECRET_KEY')
-        testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
+        api_key, api_secret, testnet = resolve_binance_creds()
         
         if not api_key or not api_secret:
             return jsonify({
@@ -2570,9 +2807,7 @@ def api_portfolio():
         try:
             from binance_history import BinanceHistoryFetcher
             
-            api_key = os.getenv('BINANCE_API_KEY')
-            api_secret = os.getenv('BINANCE_SECRET_KEY')
-            testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
+            api_key, api_secret, testnet = resolve_binance_creds()
             
             if api_key and api_secret:
                 fetcher = BinanceHistoryFetcher(api_key, api_secret, testnet)

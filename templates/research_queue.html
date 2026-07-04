@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Research Queue · Paera Terminal{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div><h1><i class="fas fa-magnifying-glass-chart me-2" style="color:var(--blue);"></i>Research Queue</h1>
+        <div class="sub">Derin araştırma bekleyen coinler (research_queue statüsü)</div></div>
+    <button class="btn btn-ghost" onclick="load()"><i class="fas fa-rotate me-1"></i>Yenile</button>
+</div>
+<div class="panel">
+    <div class="panel__head"><h2><i class="fas fa-list-check me-2 dim"></i>Kuyruk</h2><span class="pill blue" id="cnt">0</span></div>
+    <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Sembol</th><th>24s %</th><th>Hacim</th><th>Volatilite</th><th>Neden</th><th>Keşif</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="7" class="muted text-center py-4">Yükleniyor…</td></tr></tbody>
+    </table></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const $=(i)=>document.getElementById(i);
+const j=(u,o)=>fetch(u,o).then(r=>r.json()).catch(e=>({success:false,error:String(e)}));
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num=v=>(v==null||isNaN(v))?'—':(+v).toFixed(0);
+function vol(v){v=+v||0; if(v>=1e9)return '$'+(v/1e9).toFixed(1)+'B'; if(v>=1e6)return '$'+(v/1e6).toFixed(1)+'M'; if(v>=1e3)return '$'+(v/1e3).toFixed(0)+'K'; return '$'+v.toFixed(0);}
+async function load(){
+  const r=await j('/api/automation/candidates?status=research_queue');
+  const rows=(r&&r.candidates)||[];
+  $('cnt').textContent = rows.length;
+  $('rows').innerHTML = rows.length ? rows.map(c=>{
+    const chg=+c.price_change_24h||0; const base=(c.symbol||'').split('/')[0];
+    return `<tr>
+      <td><a href="/automation/coin/${encodeURIComponent(base)}"><strong>${esc(c.symbol)}</strong></a></td>
+      <td class="num ${chg>=0?'pos':'neg'}">${chg>=0?'+':''}${chg.toFixed(2)}%</td>
+      <td class="num">${vol(c.volume_24h)}</td>
+      <td class="num">${num(c.volatility_score)}</td>
+      <td class="dim" style="font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.discovery_reason||'—')}</td>
+      <td class="dim" style="font-size:11px;">${(c.discovered_at||'').replace('T',' ').slice(0,16)||'—'}</td>
+      <td><button class="icon-btn" title="Araştır" onclick="research('${esc(base)}',this)"><i class="fas fa-microscope"></i></button></td></tr>`;
+  }).join('') : `<tr><td colspan="7" class="muted text-center py-4">Araştırma kuyruğu boş.</td></tr>`;
+}
+async function research(sym,btn){
+  const o=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm"></span>';
+  await j('/api/automation/coin/'+encodeURIComponent(sym)+'/research',{method:'POST'});
+  btn.disabled=false; btn.innerHTML=o; load();
+}
+document.addEventListener('DOMContentLoaded',()=>{load();setInterval(load,45000);});
+</script>
+{% endblock %}

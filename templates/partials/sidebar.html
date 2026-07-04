@@ -26,16 +26,19 @@
         <a class="navlink {{ 'active' if ep == 'market_intelligence' }}" href="{{ url_for('market_intelligence') }}">
             <i class="fas fa-brain"></i> Market Intelligence
         </a>
-        <a class="navlink" href="{{ url_for('signals_alias') }}">
+        <a class="navlink {{ 'active' if ep == 'prediction_lab' }}" href="{{ url_for('prediction_lab') }}">
+            <i class="fas fa-microchip"></i> Prediction Lab
+        </a>
+        <a class="navlink {{ 'active' if ep == 'signals_alias' }}" href="{{ url_for('signals_alias') }}">
             <i class="fas fa-bolt"></i> Signals
         </a>
-        <a class="navlink" href="{{ url_for('watchlist_alias') }}">
+        <a class="navlink {{ 'active' if ep == 'watchlist_alias' }}" href="{{ url_for('watchlist_alias') }}">
             <i class="fas fa-star"></i> Watchlist
         </a>
-        <a class="navlink" href="{{ url_for('automation_dashboard') }}">
+        <a class="navlink {{ 'active' if ep == 'research_queue' }}" href="{{ url_for('research_queue') }}">
             <i class="fas fa-magnifying-glass-chart"></i> Research Queue
         </a>
-        <a class="navlink" href="{{ url_for('reports_alias') }}">
+        <a class="navlink {{ 'active' if ep == 'reports_alias' }}" href="{{ url_for('reports_alias') }}">
             <i class="fas fa-file-invoice"></i> Reports
         </a>
 

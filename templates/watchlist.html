@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Watchlist · Paera Terminal{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div><h1><i class="fas fa-star me-2 warn"></i>Watchlist</h1>
+        <div class="sub">İzlemeye alınan coinler (watchlist + hot/trade adayları)</div></div>
+    <button class="btn btn-ghost" onclick="load()"><i class="fas fa-rotate me-1"></i>Yenile</button>
+</div>
+<div class="panel">
+    <div class="panel__head"><h2><i class="fas fa-star me-2 dim"></i>İzlenen Coinler</h2><span class="pill gray" id="cnt">0</span></div>
+    <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Sembol</th><th>24s %</th><th>Hacim</th><th>Likidite</th><th>Durum</th><th>Neden</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="7" class="muted text-center py-4">Yükleniyor…</td></tr></tbody>
+    </table></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const $=(i)=>document.getElementById(i);
+const j=(u,o)=>fetch(u,o).then(r=>r.json()).catch(e=>({success:false,error:String(e)}));
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num=v=>(v==null||isNaN(v))?'—':(+v).toFixed(0);
+function statusPill(s){s=(s||'').toLowerCase();const m={watchlist:'yellow',hot_candidate:'red',trade_candidate:'red',research_queue:'blue',discovered:'gray',rejected:'gray',cooldown:'gray'};return `<span class="pill ${m[s]||'gray'}">${esc((s||'—').replace(/_/g,' '))}</span>`;}
+function vol(v){v=+v||0; if(v>=1e9)return '$'+(v/1e9).toFixed(1)+'B'; if(v>=1e6)return '$'+(v/1e6).toFixed(1)+'M'; if(v>=1e3)return '$'+(v/1e3).toFixed(0)+'K'; return '$'+v.toFixed(0);}
+async function load(){
+  // watchlist + hot_candidate + trade_candidate statülerini birleştir
+  const parts = await Promise.all(['watchlist','hot_candidate','trade_candidate'].map(s=>j('/api/automation/candidates?status='+s)));
+  const rows = [].concat(...parts.map(p=>(p&&p.candidates)||[]));
+  $('cnt').textContent = rows.length;
+  $('rows').innerHTML = rows.length ? rows.map(c=>{
+    const chg=+c.price_change_24h||0;
+    return `<tr>
+      <td><a href="/automation/coin/${encodeURIComponent((c.symbol||'').split('/')[0])}"><strong>${esc(c.symbol)}</strong></a></td>
+      <td class="num ${chg>=0?'pos':'neg'}">${chg>=0?'+':''}${chg.toFixed(2)}%</td>
+      <td class="num">${vol(c.volume_24h)}</td>
+      <td class="num">${num(c.liquidity_score)}</td>
+      <td>${statusPill(c.status)}</td>
+      <td class="dim" style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.discovery_reason||'—')}</td>
+      <td><a class="icon-btn" href="/automation/coin/${encodeURIComponent((c.symbol||'').split('/')[0])}" title="Detay"><i class="fas fa-chart-bar"></i></a></td></tr>`;
+  }).join('') : `<tr><td colspan="7" class="muted text-center py-4">İzleme listesi boş. Market Scanner'da tarama yapın.</td></tr>`;
+}
+document.addEventListener('DOMContentLoaded',()=>{load();setInterval(load,30000);});
+</script>
+{% endblock %}

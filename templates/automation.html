@@ -249,7 +249,7 @@ async function loadCandidates() {
             const rec = s.recommendation || 'HOLD';
             const recColor = rec.includes('BUY') ? 'var(--green)' : (rec.includes('SELL') ? 'var(--red)' : 'var(--txt-dim)');
             return `<tr>
-                <td class="sym"><a href="/automation/coin/${encodeURIComponent(s.symbol)}" style="color:inherit;text-decoration:none;border-bottom:1px dotted var(--txt-faint)">${s.symbol}</a><br><small>${(s.reasons||[]).slice(0,1).join('') || '—'}</small></td>
+                <td class="sym"><a href="/automation/coin/${encodeURIComponent((s.symbol||'').split('/')[0])}" style="color:inherit;text-decoration:none;border-bottom:1px dotted var(--txt-faint)">${s.symbol}</a><br><small>${(s.reasons||[]).slice(0,1).join('') || '—'}</small></td>
                 <td><div class="num" style="color:${barColor(s.opportunity_score)}">${fmt(s.opportunity_score,0)}</div>${miniBar(s.opportunity_score)}</td>
                 <td><div class="num" style="color:${barColor(s.risk_score,true)}">${fmt(s.risk_score,0)}</div>${miniBar(s.risk_score,true)}</td>
                 <td class="num">${fmt((s.confidence||0)*100,0)}%</td>

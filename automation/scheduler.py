@@ -18,9 +18,11 @@ class AutomationScheduler:
         self.last_run = None
 
     def _job(self):
+        if not C.DISCOVERY_ENABLED:
+            return
         try:
             from .engine import run_discovery, run_research
-            print("🤖 Automation turu başlıyor (discovery + research)...")
+            print("🤖 Automation turu başlıyor (discovery + research + simülasyon işleme)...")
             d = run_discovery(persist=True)
             r = run_research(persist=True)
             print(f"✅ Automation turu: scanned={d['scanned']} passed={d['passed']} "
@@ -39,31 +41,27 @@ class AutomationScheduler:
             print(f"⚠️ feedback atlandı: {e}")
 
     def _loop(self):
-        try:
-            import schedule
-        except Exception as e:
-            print(f"❌ 'schedule' kütüphanesi yok, scheduler durduruldu: {e}")
-            self.running = False
-            return
-        schedule.every(C.SCAN_INTERVAL_MINUTES).minutes.do(self._job)
-        self._job()  # ilk çalıştırma
+        # Manuel zamanlayıcı (schedule dep'i gerekmez) → DISCOVERY_ENABLED / SCAN_INTERVAL RUNTIME değişebilir
+        # (Settings'ten açılınca yeniden başlatmaya gerek yok; thread hep döner, iş sadece açıkken çalışır).
         while self.running:
             try:
-                schedule.run_pending()
+                if C.DISCOVERY_ENABLED:
+                    now = time.time()
+                    if self.last_run is None or (now - self.last_run) >= max(1, C.SCAN_INTERVAL_MINUTES) * 60:
+                        self.last_run = now
+                        self._job()
             except Exception as e:
-                print(f"⚠️ scheduler run_pending hatası: {e}")
-            time.sleep(5)
+                print(f"⚠️ scheduler loop hatası: {e}")
+            time.sleep(10)
 
     def start(self):
-        if not C.DISCOVERY_ENABLED:
-            print("ℹ️ AUTO_DISCOVERY_ENABLED=false — otomasyon scheduler başlatılmadı")
-            return False
+        # Thread HER ZAMAN başlar (self-gating); AUTO_DISCOVERY_ENABLED runtime'da açılınca otomatik koşar.
         if self.running:
             return True
         self.running = True
         self.thread = threading.Thread(target=self._loop, daemon=True)
         self.thread.start()
-        print(f"✅ Automation scheduler başlatıldı (her {C.SCAN_INTERVAL_MINUTES} dk)")
+        print(f"✅ Automation scheduler thread aktif (enabled={C.DISCOVERY_ENABLED}, her {C.SCAN_INTERVAL_MINUTES} dk)")
         return True
 
     def stop(self):

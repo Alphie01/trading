@@ -396,3 +396,33 @@ class MarketRegimeSnapshot(SharedBase):
     __table_args__ = (
         Index("ix_market_regime_symbol_tf_time", "symbol", "timeframe", "computed_at"),
     )
+
+
+class SignalFeedback(SharedBase):
+    """Sinyal→sonuç geri bildirimi (Faz 8) — kapalı simülasyon sonuçlarından agregat.
+
+    (symbol × regime × timeframe × signal_bucket) başına upsert. quality_score model_weights'i
+    regime-spesifik olarak besler; false_signal_reasons = {sebep: adet} (kaybeden işlemler).
+    """
+
+    __tablename__ = "signal_feedback"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(30), nullable=False)
+    feature_set_version = Column(String(40))
+    regime = Column(String(20), nullable=False, server_default="all")
+    timeframe = Column(String(10), nullable=False, server_default="all")
+    signal_bucket = Column(String(10), nullable=False, server_default="unknown")  # high/mid/low
+    sample_count = Column(Integer, server_default="0")
+    win_count = Column(Integer, server_default="0")
+    win_rate = Column(Numeric(6, 2))
+    avg_pnl = Column(Numeric(18, 8))
+    profit_factor = Column(Numeric(12, 4))
+    quality_score = Column(Numeric(5, 4))
+    false_signal_reasons = Column(JSONB)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_signal_feedback_symbol_regime_bucket", "symbol", "regime", "signal_bucket"),
+    )

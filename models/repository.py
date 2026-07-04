@@ -222,3 +222,73 @@ def get_weights(symbol: Optional[str] = None, regime: Optional[str] = None,
     except Exception as e:
         logger.info("get_weights atlandı: %s", e)
         return []
+
+
+# --------------------------------------------------------------------------- #
+# signal_feedback (shared_0007) — Faz 8: simülasyon → sinyal kalitesi agregatı
+# --------------------------------------------------------------------------- #
+def _feedback_to_dict(r) -> Dict:
+    return {
+        "id": r.id, "symbol": r.symbol, "feature_set_version": r.feature_set_version,
+        "regime": r.regime, "timeframe": r.timeframe, "signal_bucket": r.signal_bucket,
+        "sample_count": r.sample_count, "win_count": r.win_count, "win_rate": _f(r.win_rate),
+        "avg_pnl": _f(r.avg_pnl), "profit_factor": _f(r.profit_factor),
+        "quality_score": _f(r.quality_score), "false_signal_reasons": r.false_signal_reasons,
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+    }
+
+
+def upsert_signal_feedback(row: Dict) -> Optional[int]:
+    """(symbol, regime, timeframe, signal_bucket) anahtarıyla agregat upsert."""
+    try:
+        from sqlalchemy import select
+        from trading_db.models_shared import SignalFeedback
+        from trading_db.session import get_session
+        with get_session() as s:
+            fb = s.execute(
+                select(SignalFeedback).where(
+                    SignalFeedback.symbol == (row.get("symbol") or "").upper(),
+                    SignalFeedback.regime == (row.get("regime") or "all"),
+                    SignalFeedback.timeframe == (row.get("timeframe") or "all"),
+                    SignalFeedback.signal_bucket == (row.get("signal_bucket") or "unknown"),
+                )
+            ).scalar_one_or_none()
+            if fb is None:
+                fb = SignalFeedback(
+                    symbol=(row.get("symbol") or "").upper(),
+                    regime=row.get("regime") or "all",
+                    timeframe=row.get("timeframe") or "all",
+                    signal_bucket=row.get("signal_bucket") or "unknown",
+                )
+                s.add(fb)
+            fb.feature_set_version = row.get("feature_set_version")
+            fb.sample_count = row.get("sample_count")
+            fb.win_count = row.get("win_count")
+            fb.win_rate = row.get("win_rate")
+            fb.avg_pnl = row.get("avg_pnl")
+            fb.profit_factor = row.get("profit_factor")
+            fb.quality_score = row.get("quality_score")
+            fb.false_signal_reasons = row.get("false_signal_reasons")
+            s.flush()
+            return fb.id
+    except Exception as e:
+        logger.info("upsert_signal_feedback atlandı: %s", e)
+        return None
+
+
+def get_signal_feedback(symbol: Optional[str] = None, regime: Optional[str] = None,
+                        limit: int = 500) -> List[Dict]:
+    try:
+        from sqlalchemy import select
+        from trading_db.models_shared import SignalFeedback as F
+        from trading_db.session import get_session
+        with get_session() as s:
+            q = select(F).order_by(F.updated_at.desc()).limit(limit)
+            if symbol:
+                q = q.where(F.symbol == symbol.upper())
+            if regime:
+                q = q.where(F.regime == regime)
+            return [_feedback_to_dict(r) for r in s.execute(q).scalars().all()]
+    except Exception as e:
+        logger.info("get_signal_feedback atlandı: %s", e)
+        return []

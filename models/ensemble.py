@@ -74,6 +74,8 @@ def predict_ensemble(symbol: str, df, *, model_types=None,
             continue
         pred = model.signal(x)
         w = mrepo.get_weight(symbol, mt, feature_set_version, regime, timeframe)
+        if w is None and regime != "all":
+            w = mrepo.get_weight(symbol, mt, feature_set_version, "all", timeframe)  # regime yoksa 'all'e düş
         contributions.append({
             "model_type": mt, "p_up": pred.proba.get("up"),
             "confidence": pred.confidence, "weight": (w["weight"] if w else None),
