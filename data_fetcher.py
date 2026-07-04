@@ -31,6 +31,13 @@ class CryptoDataFetcher:
             'secret': '',
             'timeout': 30000,
             'enableRateLimit': True,
+            'options': {
+                # SADECE spot market'leri yükle. Aksi halde ccxt load_markets futures (fapi) + coin-futures
+                # (dapi) exchangeInfo'yu da çeker; Binance Futures bazı bölgelerde (ör. TR) coğrafi engelli →
+                # fapi çağrısı patlar ve spot çalışsa bile TÜM veri çekimi (fetch_tickers/ohlcv) düşer.
+                'defaultType': 'spot',
+                'fetchMarkets': ['spot'],
+            },
         })
     
     def fetch_ohlcv_data(self, symbol, timeframe='4h', days=None):

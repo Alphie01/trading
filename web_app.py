@@ -118,6 +118,18 @@ def _bind_tenant_context():
         clear_current_tenant()
 
 
+# Tüm template'lere çalışma modu (Binance testnet/live) enjekte edilir → topbar rozeti gerçek modu gösterir.
+@app.context_processor
+def _inject_mode():
+    testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
+    exchange_type = os.getenv('AUTO_EXCHANGE_TYPE', 'spot')
+    return {
+        'binance_testnet': testnet,
+        'binance_mode': 'TESTNET' if testnet else 'LIVE',
+        'exchange_type': exchange_type.upper(),
+    }
+
+
 @app.teardown_request
 def _clear_tenant_context(exc=None):
     clear_current_tenant()
@@ -2345,7 +2357,7 @@ def api_intelligence_status():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/intelligence/news/<symbol>')
+@app.route('/api/intelligence/news/<path:symbol>')
 @login_required
 def api_intelligence_news(symbol):
     """Bir sembol için son snapshot + son haber öğeleri (DB'den; hesaplama yapmaz)."""
@@ -2358,7 +2370,7 @@ def api_intelligence_news(symbol):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/intelligence/refresh/<symbol>', methods=['POST'])
+@app.route('/api/intelligence/refresh/<path:symbol>', methods=['POST'])
 @login_required
 def api_intelligence_refresh(symbol):
     """Bir sembol için market zekâsını yeniden hesapla (collect+LLM+persist). Ağır → istek üzerine."""

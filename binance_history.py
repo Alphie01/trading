@@ -42,7 +42,10 @@ class BinanceHistoryFetcher:
                 'sandbox': testnet,  # Testnet
                 'enableRateLimit': True,
                 'options': {
-                    'defaultType': 'spot'  # Spot trading
+                    'defaultType': 'spot',  # Spot trading
+                    # SADECE spot market'leri yükle → load_markets futures (fapi) exchangeInfo'ya gitmez
+                    # (futures izni/erişimi yoksa gereksiz hata üretir).
+                    'fetchMarkets': ['spot'],
                 }
             })
             

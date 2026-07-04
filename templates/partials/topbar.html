@@ -9,8 +9,10 @@
 
     <div class="topbar__spacer"></div>
 
-    {# Mod rozeti — canlıya alınana kadar TESTNET (statik gösterim; ileride /api/trading_status ile doldurulur) #}
-    <span class="chip mode" id="paModeBadge" title="Çalışma modu"><i class="fas fa-vial"></i> TESTNET</span>
+    {# Mod rozeti — gerçek Binance modu (BINANCE_TESTNET env → context processor) #}
+    <span class="chip mode {{ 'live' if not binance_testnet }}" id="paModeBadge" title="Binance çalışma modu">
+        <i class="fas fa-{{ 'vial' if binance_testnet else 'circle-dot' }}"></i> {{ binance_mode }} · {{ exchange_type }}
+    </span>
 
     <span class="chip d-none d-md-inline-flex" id="paApiHealth" title="API durumu">
         <span class="dot" id="paApiHealthDot"></span> API
