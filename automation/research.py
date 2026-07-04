@@ -325,4 +325,5 @@ def research_coin(symbol: str, ticker: Dict = None, df=None, fetcher=None,
         "market_intel": market_intel_snapshot(symbol),
         "regime": regime,
         "anomaly": anomaly,
+        "_df": df,  # Decision Layer (Faz 7) data_quality/regime için; serialize EDİLMEZ (score'a taşınmaz)
     }

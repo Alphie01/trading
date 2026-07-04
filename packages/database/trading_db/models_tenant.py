@@ -324,3 +324,30 @@ class SimulationReport(TenantBase):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (Index("ix_simulation_reports_sim_period", "simulation_id", "period_type"),)
+
+
+# ============================================================================ #
+# Decision Layer (TENANT) — Faz 7: nihai karar audit'i (score_full_v2 çıktısı)
+# ============================================================================ #
+class EnsembleDecision(TenantBase):
+    """DecisionEngine nihai kararı (per-tenant artifact). decision = tam superset snapshot."""
+
+    __tablename__ = "ensemble_decisions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(30), nullable=False)
+    timeframe = Column(String(10), server_default="4h")
+    regime = Column(String(20))
+    recommendation = Column(String(20))
+    final_action = Column(String(20))
+    confidence = Column(Numeric(5, 4))
+    opportunity_score = Column(Numeric(6, 2))
+    risk_score = Column(Numeric(6, 2))
+    data_quality = Column(Numeric(5, 4))
+    ensemble = Column(JSONB)
+    multi_timeframe = Column(JSONB)
+    blocked_reasons = Column(JSONB)
+    decision = Column(JSONB)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_ensemble_decisions_symbol_time", "symbol", "created_at"),)

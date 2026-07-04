@@ -130,7 +130,11 @@ def run_research(symbols: Optional[List[str]] = None, dfs: Optional[Dict] = None
         research = research_coin(sym, df=df)
         if research.get("technical") is None and df is None:
             continue
-        score = score_full(research)
+        if C.DECISION_LAYER_ENABLED:
+            from .scoring import score_full_v2
+            score = score_full_v2(research)   # superset; veto/regime/data_quality dahil
+        else:
+            score = score_full(research)
         researched += 1
         status = next_status(score["opportunity_score"], score["risk_score"], score["confidence"])
 
@@ -142,6 +146,14 @@ def run_research(symbols: Optional[List[str]] = None, dfs: Optional[Dict] = None
                 tenant_repo.add_to_watchlist(schema, sym)
                 watchlisted += 1
         sig = generate_signal(score, schema, persist=persist)
+
+        # Faz 7: nihai kararı (superset) tenant ensemble_decisions'a yaz (best-effort)
+        if C.DECISION_LAYER_ENABLED and schema and persist:
+            try:
+                from decision import tenant_repo as dtr
+                dtr.save_ensemble_decision(schema, score)
+            except Exception:
+                pass
 
         # Risk manager + (opsiyonel) trade execution — fail-closed (default AUTO_TRADE_ENABLED=false → işlem yok)
         if allow_trades and sig["signal"] != "HOLD":

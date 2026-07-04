@@ -47,6 +47,9 @@ class AutomationConfig:
     # Multi-timeframe confirmation (Faz 6) — 5m/15m/1h/4h/1d uyum. Default KAPALI.
     MULTI_TIMEFRAME_ENABLED = _bool("AUTO_MULTI_TIMEFRAME_ENABLED", "false")
     MULTI_TIMEFRAMES = [s.strip() for s in os.getenv("AUTO_MULTI_TIMEFRAMES", "15m,1h,4h,1d").split(",") if s.strip()]
+    # Decision Layer (Faz 7) — score_full yerine score_full_v2 (superset) kullanılır. Default KAPALI.
+    # KAPALI iken run_research AYNEN score_full kullanır (byte-aynı). Katman yalnız düşürür/veto eder.
+    DECISION_LAYER_ENABLED = _bool("AUTO_DECISION_LAYER_ENABLED", "false")
 
     # Stablecoin base'leri (discovery dışı)
     STABLE_BASES = set(_csv(
@@ -90,6 +93,9 @@ class AutomationConfig:
         "AUTO_TREE_MODELS_ENABLED": ("TREE_MODELS_ENABLED", "bool"),
         "AUTO_W_TREE": ("W_TREE", "float"),
         "AUTO_REGIME_ANOMALY_ENABLED": ("REGIME_ANOMALY_ENABLED", "bool"),
+        "AUTO_MARKET_DATA_ENABLED": ("MARKET_DATA_ENABLED", "bool"),
+        "AUTO_MULTI_TIMEFRAME_ENABLED": ("MULTI_TIMEFRAME_ENABLED", "bool"),
+        "AUTO_DECISION_LAYER_ENABLED": ("DECISION_LAYER_ENABLED", "bool"),
         "AUTO_W_NEWS_QUALITY": ("W_NEWS_QUALITY", "float"),
         "AUTO_W_SOCIAL_MOMENTUM": ("W_SOCIAL_MOMENTUM", "float"),
         "AUTO_WATCHLIST_MIN_OPPORTUNITY": ("WATCHLIST_MIN_OPPORTUNITY", "float"),

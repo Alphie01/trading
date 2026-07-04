@@ -217,3 +217,13 @@ def score_full(research: Dict) -> Dict:
         "reasons": sorted(set(reasons)),
         "warnings": sorted(set(warnings)),
     }
+
+
+def score_full_v2(research: Dict, df=None) -> Dict:
+    """Faz 7: score_full SÜPERSETİ — regime/data_quality/ensemble/multi-tf + veto.
+
+    score_full DEĞİŞMEZ; bu fonksiyon onu çağırıp DecisionEngine ile zenginleştirir.
+    Tüm eski anahtarlar korunur → tüketiciler (generate_signal/save_score/RiskManager) kırılmaz.
+    """
+    from decision.layer import decide
+    return decide(research, df=df)
