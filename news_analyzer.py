@@ -59,18 +59,15 @@ class CryptoNewsAnalyzer:
         else:
             print("⚠️ NewsAPI not configured - will use free sources only")
         
-        # FinBERT model for financial sentiment analysis
-        try:
-            self.finbert_tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-            self.finbert_model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-            self.finbert_pipeline = pipeline("sentiment-analysis", 
-                                            model=self.finbert_model, 
-                                            tokenizer=self.finbert_tokenizer)
-            self.use_finbert = True
-            print("✅ FinBERT modeli yüklendi (finansal sentiment analizi)")
-        except Exception as e:
-            print(f"⚠️ FinBERT yüklenemedi, alternatif modeller kullanılacak: {str(e)}")
-            self.use_finbert = False
+        # FinBERT — LAZY yüklenir (ilk sentiment çağrısında). __init__'te YÜKLENMEZ:
+        # ~440MB HuggingFace indirmesi, ağ yavaş/engelliyse startup'ı SONSUZ bloklardı (web 50dk açılmama sebebi).
+        # use_finbert: None = henüz denenmedi, True = yüklü, False = kullanılamıyor (VADER'a düş).
+        self.finbert_tokenizer = None
+        self.finbert_model = None
+        self.finbert_pipeline = None
+        self.use_finbert = None
+        # HF indirmesi asla süresiz asılmasın (saniyeler) — başarısızsa VADER'a hızlı düşer.
+        os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", os.getenv("HF_HUB_DOWNLOAD_TIMEOUT", "15"))
         
         # Kripto-specific keywords
         self.positive_keywords = [
@@ -287,17 +284,35 @@ class CryptoNewsAnalyzer:
             'textblob_subjectivity': blob.sentiment.subjectivity
         }
     
+    def _ensure_finbert(self):
+        """FinBERT'i ilk ihtiyaçta BİR KEZ yükler (lazy). Başarısız/erişilemezse use_finbert=False → VADER'a düşülür.
+        __init__'i bloklamadığı için web startup asılmaz; ilk haber analizi bir kez model yükler (worker'a taşınana dek)."""
+        if self.use_finbert is not None:
+            return self.use_finbert
+        try:
+            self.finbert_tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
+            self.finbert_model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
+            self.finbert_pipeline = pipeline("sentiment-analysis",
+                                             model=self.finbert_model,
+                                             tokenizer=self.finbert_tokenizer)
+            self.use_finbert = True
+            print("✅ FinBERT modeli yüklendi (lazy, finansal sentiment analizi)")
+        except Exception as e:
+            print(f"⚠️ FinBERT yüklenemedi, VADER'a düşülüyor: {str(e)}")
+            self.use_finbert = False
+        return self.use_finbert
+
     def analyze_sentiment_finbert(self, text):
         """
         FinBERT ile finansal sentiment analizi
-        
+
         Args:
             text (str): Analiz edilecek metin
-        
+
         Returns:
             dict: FinBERT sentiment skorları
         """
-        if not self.use_finbert:
+        if not self._ensure_finbert():
             return {'finbert_label': 'neutral', 'finbert_score': 0.0}
         
         try:

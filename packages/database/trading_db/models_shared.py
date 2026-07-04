@@ -426,3 +426,37 @@ class SignalFeedback(SharedBase):
     __table_args__ = (
         Index("ix_signal_feedback_symbol_regime_bucket", "symbol", "regime", "signal_bucket"),
     )
+
+
+# ============================================================================ #
+# Async iş kuyruğu — SHARED (RQ worker'ın işlediği ağır işler; web enqueue eder, worker yürütür)
+# ============================================================================ #
+class Job(SharedBase):
+    """Asenkron iş kaydı (RQ worker tarafından işlenir).
+
+    Ağır işler (TRAIN_COIN, ANALYZE_COIN, AUTOMATION_SCAN, RUN_MARKET_INTELLIGENCE ...) web process'ini
+    DEĞİL ai-worker'ı meşgul eder. Web enqueue edip job_id döner; worker durumu buraya yazar (progress/step).
+    """
+
+    __tablename__ = "jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(String(80), nullable=False, unique=True)        # örn. train_coin_BTCUSDT_20260704_120000
+    job_type = Column(String(40), nullable=False)                   # TRAIN_COIN | ANALYZE_COIN | ...
+    status = Column(String(20), nullable=False, server_default="queued")  # queued|running|succeeded|failed|cancelled
+    symbol = Column(String(30))
+    payload = Column(JSONB)
+    progress_percent = Column(Integer, server_default="0")
+    current_step = Column(String(160))
+    result = Column(JSONB)
+    error = Column(Text)
+    created_by = Column(String(80))          # kullanıcı (attribution)
+    tenant_schema = Column(String(63))       # worker context (gerekirse set_current_tenant)
+    worker_id = Column(String(80))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_jobs_status_created", "status", "created_at"),
+    )

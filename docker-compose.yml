@@ -20,6 +20,20 @@ services:
       timeout: 5s
       retries: 10
 
+  # İş kuyruğu broker'ı (RQ) — web enqueue eder, ai-worker tüketir.
+  redis:
+    image: redis:7-alpine
+    container_name: trading-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   web:
     build:
       context: .
@@ -31,6 +45,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     # .env'deki TÜM değişkenler container'a aktarılır: BINANCE_API_KEY/BINANCE_SECRET_KEY/BINANCE_TESTNET,
     # NEWSAPI_KEY, WHALE_ALERT_API_KEY, OLLAMA_*/INTELLIGENCE_* vb. (aksi halde container görmez → testnet
     # default 'true' kalır, keyler boş olur). Aşağıdaki environment: bloğundaki AÇIK değerler bunları EZER.
@@ -41,6 +57,9 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app_db}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      # İş kuyruğu (RQ) — web ENQUEUE eder, ai-worker yürütür. Redis yoksa train_coin thread'e düşer (regresyon yok).
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      SERVICE_ROLE: web
       APP_ENV: production
       # Monolith Flask (web_app.py: FLASK_HOST/FLASK_PORT/FLASK_DEBUG/FLASK_SECRET_KEY okur)
       FLASK_HOST: 0.0.0.0
@@ -57,6 +76,9 @@ services:
       WEB_PORT: 5000
       WEB_DEBUG: "False"
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      # Hızlı boot: HF (FinBERT) indirmesi asla süresiz asılmasın; futures (fapi) geo-engelli ise atla.
+      HF_HUB_DOWNLOAD_TIMEOUT: ${HF_HUB_DOWNLOAD_TIMEOUT:-15}
+      BINANCE_FUTURES_ENABLED: ${BINANCE_FUTURES_ENABLED:-false}
       # AI service (opsiyonel; ayrı çalıştırılır)
       AI_SERVICE_URL: ${AI_SERVICE_URL:-http://localhost:8000}
       # Market Intelligence + Ollama (LLM haber/sosyal analizi). Ollama host'ta 11434 yayınlar
@@ -83,6 +105,71 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "${WEB_HOST_PORT:-5055}:5000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/health',timeout=5).status==200 else 1)\""]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ── AI Worker: ağır işleri (eğitim/analiz/scan/intelligence) RQ kuyruğundan alıp çalıştırır ──
+  # AYNI monolith imajı, farklı komut + SERVICE_ROLE=ai-worker (entrypoint migrate/seed ATLAR → race yok).
+  # Web bloklanmaz; worker çökse web ayakta kalır. Eğitim GPU'yu burada kullanır.
+  ai-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.monolith.gpu
+    container_name: trading-ai-worker
+    restart: unless-stopped
+    command: ["python", "worker/run_worker.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app_db}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      SERVICE_ROLE: ai-worker
+      APP_ENV: production
+      FLASK_SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      TRADING_FORCE_CPU: ""
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      HF_HUB_DOWNLOAD_TIMEOUT: ${HF_HUB_DOWNLOAD_TIMEOUT:-15}
+      BINANCE_FUTURES_ENABLED: ${BINANCE_FUTURES_ENABLED:-false}
+      # Intelligence/Ollama — worker AUTOMATION_SCAN + RUN_MARKET_INTELLIGENCE çalıştırır
+      INTELLIGENCE_ENABLED: ${INTELLIGENCE_ENABLED:-false}
+      AUTO_MARKET_INTEL_ENABLED: ${AUTO_MARKET_INTEL_ENABLED:-false}
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED:-false}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:9b}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-60}
+      OLLAMA_MAX_RETRIES: ${OLLAMA_MAX_RETRIES:-2}
+      OLLAMA_REQUIRE_JSON: ${OLLAMA_REQUIRE_JSON:-true}
+      INTEL_SOCIAL_ENABLED: ${INTEL_SOCIAL_ENABLED:-false}
+      INTEL_GOOGLE_TRENDS_ENABLED: ${INTEL_GOOGLE_TRENDS_ENABLED:-true}
+      DEFAULT_TENANT_SLUG: ${DEFAULT_TENANT_SLUG:-default}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os,redis,sys; sys.exit(0 if redis.Redis.from_url(os.getenv('REDIS_URL','redis://redis:6379/0')).ping() else 1)\""]
+      interval: 20s
+      timeout: 8s
+      retries: 5
+      start_period: 30s
     deploy:
       resources:
         reservations:
@@ -116,6 +203,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
 
 # Docker bridge MTU — bazı VPS/cloud/VPN ağlarında gerçek path MTU 1500'ün ALTINDA. Bu durumda
 # container'dan giden/gelen büyük TLS handshake paketleri parçalanıp bozuluyor → "SSL: WRONG_VERSION_NUMBER"

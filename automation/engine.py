@@ -125,10 +125,16 @@ def run_research(symbols: Optional[List[str]] = None, dfs: Optional[Dict] = None
     watchlisted = 0
     signals = []
     cycle_signals = []  # simulation engine için (symbol/signal/score/current_price)
-    for sym in symbols[:limit]:
+    _batch = symbols[:limit]
+    _total = len(_batch)
+    import time as _t
+    for _i, sym in enumerate(_batch, 1):
+        _t0 = _t.time()
+        print(f"🔬 [{_i}/{_total}] araştırılıyor: {sym} ...", flush=True)
         df = dfs.get(sym) if dfs else None
         research = research_coin(sym, df=df)
         if research.get("technical") is None and df is None:
+            print(f"   ⏭️ {sym} atlandı (yetersiz veri) — {_t.time()-_t0:.1f}s", flush=True)
             continue
         if C.DECISION_LAYER_ENABLED:
             from .scoring import score_full_v2

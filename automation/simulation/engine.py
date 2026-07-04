@@ -62,6 +62,11 @@ def create_simulation(schema: str, payload: Dict, created_by: str = None) -> Dic
         "stop_loss": _num(payload.get("stop_loss")),
         "take_profit": _num(payload.get("take_profit")),
         "trailing_stop": bool(payload.get("trailing_stop")),
+        # Otonom çıkış — kullanıcı SL/TP girmese de sistem kendi kâr-al/zarar-kes/trailing uygular.
+        "auto_exit": bool(payload.get("auto_exit", True)),           # default AÇIK
+        "auto_stop_loss_percent": _num(payload.get("auto_stop_loss_percent"), 10.0),
+        "auto_take_profit_percent": _num(payload.get("auto_take_profit_percent"), 40.0),
+        "trailing_stop_percent": _num(payload.get("trailing_stop_percent"), 8.0),
         "timeframe": payload.get("timeframe", "4h"),
         "fee_profile": fee_profile,
         "slippage": _num(payload.get("slippage")),
@@ -137,8 +142,13 @@ def process_cycle(schema: str, cycle_signals: List[Dict], price_map: Dict = None
             if not price:
                 continue
             upnl = position.unrealized_pnl(pos, price)
-            repo.update_position(schema, pos["id"], current_price=price, unrealized_pnl=upnl)
+            # Trailing için tepe (en lehte) fiyatı güncelle → metadata.peak_price
+            new_peak = position.track_peak(pos, price)
+            md = {**(pos.get("metadata") or {}), "peak_price": new_peak}
+            repo.update_position(schema, pos["id"], current_price=price, unrealized_pnl=upnl,
+                                 position_metadata=md)
             pos["current_price"] = price
+            pos["metadata"] = md
             should_exit, reason = position.check_exit(pos, price, config)
             if should_exit:
                 balance += _close(schema, run, pos, price, reason, None, fee_profile)

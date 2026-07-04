@@ -43,6 +43,9 @@
         </a>
 
         <div class="nav-group-label">Sistem</div>
+        <a class="navlink {{ 'active' if ep == 'jobs_page' }}" href="{{ url_for('jobs_page') }}">
+            <i class="fas fa-list-check"></i> Jobs
+        </a>
         <a class="navlink {{ 'active' if ep == 'settings' }}" href="{{ url_for('settings') }}">
             <i class="fas fa-gear"></i> Settings
         </a>

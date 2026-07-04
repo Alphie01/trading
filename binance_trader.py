@@ -7,6 +7,7 @@ Bu modül Binance API'sini kullanarak otomatik spot ve futures trading yapar.
 Gelişmiş pozisyon yönetimi ve risk kontrolü içerir.
 """
 
+import os
 import ccxt
 import pandas as pd
 import numpy as np
@@ -65,37 +66,48 @@ class BinanceTrader:
         Binance exchange bağlantılarını başlatır
         """
         try:
-            # Spot Exchange
+            # Spot Exchange (timeout: süresiz asılmayı önler)
             self.spot_exchange = ccxt.binance({
                 'apiKey': self.api_key,
                 'secret': self.secret_key,
                 'sandbox': self.testnet,
                 'enableRateLimit': True,
+                'timeout': 15000,
                 'options': {
                     'defaultType': 'spot'
                 }
             })
-            
-            # Futures Exchange  
+
+            # Futures Exchange
             self.futures_exchange = ccxt.binance({
                 'apiKey': self.api_key,
                 'secret': self.secret_key,
                 'sandbox': self.testnet,
                 'enableRateLimit': True,
+                'timeout': 15000,
                 'options': {
                     'defaultType': 'future'
                 }
             })
-            
-            # Test bağlantısı
-            self.spot_exchange.load_markets()
-            self.futures_exchange.load_markets()
-            
-            print("✅ Binance API bağlantısı başarılı!")
-            
         except Exception as e:
-            print(f"❌ Binance API bağlantı hatası: {str(e)}")
+            print(f"❌ Binance exchange oluşturma hatası: {str(e)}")
             raise
+
+        # Test bağlantısı — NON-FATAL: load_markets() ağ ister. Yavaş/engelli/timeout olursa
+        # LOGLA ve DEVAM et (raise ETME) → construction ASILMAZ, web boot bloklanmaz (50dk hang'in ikincil sebebi).
+        try:
+            self.spot_exchange.load_markets()
+            print("✅ Binance spot bağlantısı başarılı!")
+        except Exception as e:
+            print(f"⚠️ Binance spot load_markets atlandı (ağ/erişim): {str(e)}")
+
+        # Futures (fapi) çoğu bölgede coğrafi engelli → opsiyonel; BINANCE_FUTURES_ENABLED=false ile tamamen atlanır.
+        if os.getenv('BINANCE_FUTURES_ENABLED', 'true').lower() == 'true':
+            try:
+                self.futures_exchange.load_markets()
+                print("✅ Binance futures bağlantısı başarılı!")
+            except Exception as e:
+                print(f"⚠️ Binance futures load_markets atlandı (geo-engel/ağ): {str(e)}")
     
     def log_message(self, message: str):
         """

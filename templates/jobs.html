@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Jobs · Paera Terminal{% endblock %}
+{% block head %}
+<style>
+  .prog{height:6px;border-radius:4px;background:var(--border-2,#2a2f3a);overflow:hidden;min-width:80px}
+  .prog>span{display:block;height:100%;background:var(--green,#0ECB81);transition:width .4s}
+  .prog.run>span{background:var(--yellow,#F0B90B)}
+  .wk{display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:4px 10px;border:1px solid var(--border-2,#2a2f3a);border-radius:20px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted,#888)}
+  .dot.on{background:var(--green,#0ECB81);box-shadow:0 0 6px var(--green,#0ECB81)}
+  .jstep{font-size:11px;color:var(--muted,#8b93a7)}
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div><h1><i class="fas fa-list-check me-2 dim"></i>İş Kuyruğu</h1>
+        <div class="sub">Eğitim / analiz / tarama işleri ai-worker'da çalışır — web bloklanmaz</div></div>
+    <div class="d-flex gap-2 align-items-center">
+        <span id="queueChip" class="wk"><span class="dot" id="qDot"></span><span id="qTxt">kuyruk?</span></span>
+        <button class="btn btn-ghost" onclick="load()"><i class="fas fa-rotate me-1"></i>Yenile</button>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-5"><div class="panel">
+        <div class="panel__head"><h2><i class="fas fa-graduation-cap me-2 dim"></i>Eğitim Başlat</h2></div>
+        <div class="panel__body">
+            <div class="d-flex gap-2">
+                <input id="sym" class="form-control" placeholder="BTC / ETH / SOL ..." style="max-width:180px">
+                <label class="d-inline-flex align-items-center gap-1 dim" style="font-size:12px">
+                    <input type="checkbox" id="force"> yeniden eğit</label>
+                <button class="btn btn-pa" onclick="train()"><i class="fas fa-play me-1"></i>Kuyruğa Al</button>
+            </div>
+            <div id="trainMsg" class="small mt-2 dim"></div>
+        </div>
+    </div></div>
+    <div class="col-lg-7"><div class="panel">
+        <div class="panel__head"><h2><i class="fas fa-server me-2 dim"></i>Worker'lar</h2></div>
+        <div class="panel__body" id="workers"><span class="muted">—</span></div>
+    </div></div>
+</div>
+
+<div class="panel">
+    <div class="panel__head">
+        <h2><i class="fas fa-clock-rotate-left me-2 dim"></i>İşler</h2>
+        <select id="fltStatus" class="form-select form-select-sm" style="max-width:160px" onchange="load()">
+            <option value="">Tümü</option>
+            <option value="queued">queued</option>
+            <option value="running">running</option>
+            <option value="succeeded">succeeded</option>
+            <option value="failed">failed</option>
+            <option value="cancelled">cancelled</option>
+        </select>
+    </div>
+    <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Tip</th><th>Sembol</th><th>Durum</th><th>İlerleme</th><th>Adım</th><th>Oluşturma</th><th>Süre</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="8" class="muted text-center py-4">Yükleniyor…</td></tr></tbody>
+    </table></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const $=(i)=>document.getElementById(i);
+const j=(u,o)=>fetch(u,o).then(r=>r.json()).catch(e=>({success:false,error:String(e)}));
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function stPill(s){const m={queued:'blue',running:'yellow',succeeded:'green',failed:'red',cancelled:'gray'};return `<span class="pill ${m[s]||'gray'}">${esc(s||'—')}</span>`;}
+function fmt(t){return t?new Date(t).toLocaleString('tr-TR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';}
+function dur(a,b){if(!a)return'—';const e=(b?new Date(b):new Date())-new Date(a);if(e<0)return'—';const s=Math.floor(e/1000);return s<60?s+'s':Math.floor(s/60)+'m'+(s%60)+'s';}
+
+async function train(){
+  const sym=($('sym').value||'').trim().toUpperCase();
+  const msg=$('trainMsg');
+  if(!sym){msg.textContent='Sembol gir';msg.className='small mt-2 neg';return;}
+  msg.textContent='Kuyruğa alınıyor…';msg.className='small mt-2 dim';
+  const r=await j('/api/train_coin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,force:$('force').checked})});
+  if(r.success){msg.innerHTML=`✅ ${r.status==='queued'?'Kuyruğa alındı':'Başlatıldı'}: <code>${esc(r.job_id||sym)}</code>`;msg.className='small mt-2 pos';$('sym').value='';load();}
+  else{msg.textContent='❌ '+(r.error||'hata');msg.className='small mt-2 neg';}
+}
+
+async function act(id,kind,btn){
+  btn.disabled=true;
+  await j(`/api/jobs/${encodeURIComponent(id)}/${kind}`,{method:'POST'});
+  load();
+}
+
+async function loadWorkers(){
+  const r=await j('/api/workers');
+  const dot=$('qDot'),txt=$('qTxt');
+  if(r.queue_reachable){dot.classList.add('on');txt.textContent='kuyruk bağlı';}
+  else{dot.classList.remove('on');txt.textContent='kuyruk yok (Redis?)';}
+  const ws=(r&&r.workers)||[];
+  $('workers').innerHTML = ws.length ? ws.map(w=>`<span class="wk me-2 mb-1"><span class="dot ${w.state==='busy'?'on':''}"></span>
+    <b>${esc(w.worker_id)}</b> · ${esc(w.state||'?')} ${w.current_job?'· '+esc(w.current_job):''}
+    <span class="dim">✓${w.succeeded??0}/✗${w.failed??0}</span></span>`).join('')
+    : '<span class="muted">Aktif worker yok. `ai-worker` container çalışıyor mu?</span>';
+}
+
+async function load(){
+  loadWorkers();
+  const st=$('fltStatus').value;
+  const r=await j('/api/jobs?limit=80'+(st?'&status='+st:''));
+  const rows=(r&&r.jobs)||[];
+  $('rows').innerHTML = rows.length ? rows.map(x=>{
+    const p=Math.max(0,Math.min(100,x.progress_percent||0));
+    const running=x.status==='running';
+    const canCancel=(x.status==='queued'||x.status==='running');
+    const canRetry=(x.status==='failed'||x.status==='cancelled');
+    return `<tr>
+      <td><span class="pill gray">${esc(x.job_type)}</span></td>
+      <td><strong>${esc(x.symbol||'—')}</strong></td>
+      <td>${stPill(x.status)}${x.error?` <i class="fas fa-circle-exclamation neg" title="${esc(x.error)}"></i>`:''}</td>
+      <td><div class="prog ${running?'run':''}"><span style="width:${p}%"></span></div><span class="jstep">${p}%</span></td>
+      <td class="jstep" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.current_step||'—')}</td>
+      <td class="dim" style="font-size:11px">${fmt(x.created_at)}</td>
+      <td class="dim" style="font-size:11px">${dur(x.started_at,x.finished_at)}</td>
+      <td class="text-nowrap">
+        ${canCancel?`<button class="icon-btn" title="İptal" onclick="act('${esc(x.job_id)}','cancel',this)"><i class="fas fa-stop"></i></button>`:''}
+        ${canRetry?`<button class="icon-btn" title="Tekrar dene" onclick="act('${esc(x.job_id)}','retry',this)"><i class="fas fa-rotate-right"></i></button>`:''}
+      </td></tr>`;
+  }).join('') : `<tr><td colspan="8" class="muted text-center py-4">İş yok. Yukarıdan bir eğitim başlat.</td></tr>`;
+}
+document.addEventListener('DOMContentLoaded',()=>{load();setInterval(load,3000);});
+</script>
+{% endblock %}

@@ -32,11 +32,27 @@ load_dotenv()
 # Kendi modüllerimiz
 from data_fetcher import CryptoDataFetcher
 from data_preprocessor import CryptoDataPreprocessor
-from predictor import CryptoPricePredictor
-from news_analyzer import CryptoNewsAnalyzer
 from whale_tracker import CryptoWhaleTracker
 from binance_trader import BinanceTrader
-from auto_trader_integration import LSTMAutoTrader
+
+# ── Ağır ML sınıfları (TensorFlow/torch/transformers çeker) LAZY yüklenir ──
+# Web boot'ta TF/torch import EDİLMEZ → hızlı açılış. İlk analiz/eğitim ihtiyacında _load_ml() yükler.
+CryptoPricePredictor = None
+CryptoNewsAnalyzer = None
+LSTMAutoTrader = None
+_ML_LOADED = False
+
+
+def _load_ml():
+    """predictor / news_analyzer / auto_trader_integration'ı (TF/torch) İLK İHTİYAÇTA yükler. İdempotent."""
+    global CryptoPricePredictor, CryptoNewsAnalyzer, LSTMAutoTrader, _ML_LOADED
+    if _ML_LOADED:
+        return
+    from predictor import CryptoPricePredictor as _P
+    from news_analyzer import CryptoNewsAnalyzer as _N
+    from auto_trader_integration import LSTMAutoTrader as _L
+    CryptoPricePredictor, CryptoNewsAnalyzer, LSTMAutoTrader = _P, _N, _L
+    _ML_LOADED = True
 # Paylaşılan veri katmanı (PostgreSQL + SQLAlchemy, schema-per-tenant multi-tenancy)
 from trading_db import (
     TradingDatabase as DatabaseClass,
@@ -85,28 +101,35 @@ analysis_queue = queue.Queue()
 active_analyses = {}
 monitoring_active = False
 
-# Training scheduler'ı initialize et
-try:
-    from training_scheduler import init_scheduler
-    training_scheduler = init_scheduler(
-        schedule_day=os.getenv('TRAINING_SCHEDULE_DAY', 'sunday'),
-        schedule_time=os.getenv('TRAINING_SCHEDULE_TIME', '02:00'),
-        enable_notifications=True
-    )
-    # Scheduler'ı başlat
-    training_scheduler.start_scheduler()
-    print("✅ Training Scheduler başlatıldı ve aktif!")
-except Exception as scheduler_init_error:
-    print(f"⚠️ Training Scheduler başlatma hatası: {scheduler_init_error}")
-    training_scheduler = None
+# Training scheduler — Faz 3: YALNIZ worker rolünde. `training_scheduler` → `comprehensive_trainer` → TF çeker;
+# web rolünde IMPORT ETME (web boot TF-free kalsın). Haftalık fine-tune ai-worker'da (run_worker.py) koşar.
+training_scheduler = None
+if os.getenv('SERVICE_ROLE', 'web').lower() != 'web':
+    try:
+        from training_scheduler import init_scheduler
+        training_scheduler = init_scheduler(
+            schedule_day=os.getenv('TRAINING_SCHEDULE_DAY', 'sunday'),
+            schedule_time=os.getenv('TRAINING_SCHEDULE_TIME', '02:00'),
+            enable_notifications=True
+        )
+        training_scheduler.start_scheduler()
+        print("✅ Training Scheduler başlatıldı ve aktif!")
+    except Exception as scheduler_init_error:
+        print(f"⚠️ Training Scheduler başlatma hatası: {scheduler_init_error}")
+        training_scheduler = None
+else:
+    print("⚡ Web rolü — training scheduler ai-worker'da koşar (web'de TF import edilmedi)")
 
-# Automation scheduler'ı başlat (thread hep döner; iş yalnız AUTO_DISCOVERY_ENABLED=true iken çalışır).
-# Otomatik döngü: discovery → research → sinyal → (simülasyon işleme) — her AUTO_DISCOVERY_INTERVAL_MINUTES.
-try:
-    from automation.scheduler import get_scheduler as _get_auto_scheduler
-    _get_auto_scheduler().start()
-except Exception as _auto_sched_err:
-    print(f"⚠️ Automation scheduler başlatma hatası: {_auto_sched_err}")
+# Automation scheduler — Faz 3: YALNIZ worker rolünde koşar (periyodik discovery→research→sinyal
+# AĞIR işi web process'ini meşgul ETMESİN). Web rolünde başlatılmaz; ai-worker (run_worker.py) çalıştırır.
+if os.getenv('SERVICE_ROLE', 'web').lower() != 'web':
+    try:
+        from automation.scheduler import get_scheduler as _get_auto_scheduler
+        _get_auto_scheduler().start()
+    except Exception as _auto_sched_err:
+        print(f"⚠️ Automation scheduler başlatma hatası: {_auto_sched_err}")
+else:
+    print("⚡ Web rolü — automation scheduler ai-worker'da koşar (web'de başlatılmadı)")
 
 # Authentication setup
 auth_manager = AuthManager(db)
@@ -669,9 +692,17 @@ class CoinMonitor:
         # Auto-initialize from environment variables
         self._auto_setup_from_env()
         
-    def _auto_setup_from_env(self):
-        """Environment variables'dan otomatik ayar"""
+    def _auto_setup_from_env(self, force=False):
+        """Environment variables'dan otomatik ayar (ağır ML/haber/trader kurulumu).
+
+        Web rolünde (SERVICE_ROLE=web) boot'ta ÇALIŞMAZ → TF/torch yüklenmez, web hızlı açılır.
+        Analiz anında _ensure_ml(force=True) ile lazy kurulur. Worker/diğer rollerde hep kurar.
+        """
+        if not force and os.getenv('SERVICE_ROLE', 'web').lower() == 'web':
+            logger.info("⚡ Web rolü — ağır ML/haber/trader kurulumu ertelendi (analiz anında lazy)")
+            return
         try:
+            _load_ml()  # TF/torch bağımlı sınıfları yükle
             # News API setup
             newsapi_key = os.getenv('NEWSAPI_KEY')
             newsapi_enabled = os.getenv('NEWSAPI_ENABLED', 'true').lower() == 'true'
@@ -700,9 +731,23 @@ class CoinMonitor:
         except Exception as e:
             logger.error(f"Environment auto-setup hatası: {str(e)}")
         
+    def _ensure_ml(self):
+        """TF/torch sınıflarını + haber/whale/trader analizörlerini İLK İHTİYAÇTA yükler (lazy).
+
+        Web rolünde boot'ta kurulum ertelendiği için analiz route'ları bunu çağırır → ilk analizde
+        bir kez TF/torch yüklenir + analizörler kurulur; sonraki çağrılar hızlı. Worker'da zaten kuruludur.
+        """
+        _load_ml()
+        if self.news_analyzer is None and self.whale_tracker is None and self.auto_trader is None:
+            try:
+                self._auto_setup_from_env(force=True)
+            except Exception as e:
+                logger.warning(f"_ensure_ml lazy kurulum uyarısı: {e}")
+
     def setup_analyzers(self, newsapi_key=None, whale_api_key=None):
         """Analiz araçlarını manuel ayarlar"""
         try:
+            _load_ml()
             if newsapi_key:
                 self.news_analyzer = CryptoNewsAnalyzer(newsapi_key)
                 logger.info("📰 Haber analizi aktif")
@@ -717,6 +762,7 @@ class CoinMonitor:
     def setup_auto_trader(self, api_key, api_secret, testnet=True):
         """Otomatik trading ayarlar"""
         try:
+            _load_ml()
             trader = BinanceTrader(api_key, api_secret, testnet)
             self.auto_trader = LSTMAutoTrader(trader)
             logger.info("🤖 Otomatik trading aktif")
@@ -728,6 +774,7 @@ class CoinMonitor:
     def analyze_coin(self, coin_symbol):
         """Tek coin analizi"""
         try:
+            self._ensure_ml()  # TF/torch + haber/whale analizörleri lazy (web boot hafif kalsın)
             logger.info(f"Buradayız Baba")
             logger.info(f"🔍 {coin_symbol} analizi başlıyor...")
             
@@ -894,8 +941,9 @@ class CoinMonitor:
             dict: Multi-model analiz sonuçları
         """
         try:
+            self._ensure_ml()  # TF/torch + analizörler lazy (web boot hafif kalsın)
             logger.info(f"🚀 {coin_symbol} Multi-Model analizi başlıyor...")
-            
+
             # **YENİ: İlk eğitim kontrolü - Model cache dosyalarını kontrol et**
             lstm_cache_file = f"model_cache/lstm_{coin_symbol.lower()}_model.h5"
             dqn_cache_file = f"model_cache/dqn_{coin_symbol.lower()}_model.h5"
@@ -1847,6 +1895,7 @@ def analyze_coin_route(symbol):
                     yigit_analysis = cached_analysis.get('yigit_analysis', {})
                     if not yigit_analysis and processed_df is not None:
                         try:
+                            coin_monitor._ensure_ml()  # analizörleri lazy kur (web rolünde ertelenmişti)
                             from predictor import CryptoPricePredictor
                             predictor = CryptoPricePredictor(None, preprocessor, coin_monitor.news_analyzer, coin_monitor.whale_tracker)
                             yigit_analysis = predictor.analyze_yigit_signals(processed_df)
@@ -2553,15 +2602,31 @@ def api_train_coin():
         except Exception as _ve:
             logger.info(f"train_coin: sembol doğrulama atlandı ({symbol}): {_ve}")
 
-        # İzleme listesine ekle (idempotent) + haftalık schedule'a al
+        # İzleme listesine ekle (idempotent). NOT: haftalık schedule'a ekleme YOK — training_scheduler
+        # import'u TF çeker; web TF-free kalsın. Worker'ın scheduler'ı takip edilen coinleri DB'den okur
+        # (db.add_coin yeterli). Anlık eğitim de aşağıda kuyruğa alınıyor zaten.
         try:
             db.add_coin(symbol, symbol)
-            from training_scheduler import get_scheduler
-            get_scheduler().add_coin_to_schedule(symbol)
         except Exception as _e:
-            logger.warning(f"train_coin: coin ekleme/scheduler uyarısı ({symbol}): {_e}")
+            logger.warning(f"train_coin: coin ekleme uyarısı ({symbol}): {_e}")
 
-        # Eğitimi arka planda başlat (/add_coin ile aynı desen)
+        # Eğitimi KUYRUĞA al → ai-worker'da çalışır (web thread'i YOK, web bloklanmaz).
+        import jobs as jobq
+        try:
+            from trading_db import get_current_tenant
+            tenant_schema = get_current_tenant()
+        except Exception:
+            tenant_schema = None
+        job_id, err = jobq.enqueue_job(
+            'TRAIN_COIN', payload={'force': force}, symbol=symbol,
+            created_by=getattr(current_user, 'username', None), tenant_schema=tenant_schema)
+        if job_id:
+            return jsonify({'success': True, 'message': 'Eğitim kuyruğa alındı',
+                            'symbol': symbol, 'job_id': job_id, 'status': 'queued'})
+
+        # Kuyruk (Redis) yoksa GERİYE UYUM: eski arka-plan thread'i ile eğit (regresyon olmasın).
+        logger.warning(f"train_coin: kuyruk yok ({err}) → in-process thread fallback")
+
         def _bg_train():
             try:
                 from comprehensive_trainer import ComprehensiveTrainer
@@ -2578,10 +2643,116 @@ def api_train_coin():
                 socketio.emit('analysis_error', {'coin': symbol, 'error': str(te)})
 
         threading.Thread(target=_bg_train, daemon=True).start()
-
-        return jsonify({'success': True, 'message': 'Eğitim başlatıldı', 'symbol': symbol})
+        return jsonify({'success': True, 'message': 'Eğitim başlatıldı (kuyruk yok — yerel)',
+                        'symbol': symbol, 'status': 'started', 'queue': False})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ─── İş kuyruğu (jobs) API — enqueue durum takibi ───────────────────────────────
+@app.route('/api/jobs')
+@login_required
+def api_jobs_list():
+    """Son işler (opsiyonel ?status=&type=&limit=). Kuyruk yoksa graceful boş liste."""
+    try:
+        import jobs as jobq
+        return jsonify({
+            'success': True,
+            'queue_reachable': jobq.queue_available(),
+            'jobs': jobq.list_jobs(limit=int(request.args.get('limit', 50)),
+                                   status=request.args.get('status'),
+                                   job_type=request.args.get('type')),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e), 'jobs': []}), 500
+
+
+@app.route('/api/jobs/<job_id>')
+@login_required
+def api_job_detail(job_id):
+    """Tek iş durumu (polling için)."""
+    try:
+        import jobs as jobq
+        job = jobq.get_job(job_id)
+        if not job:
+            return jsonify({'success': False, 'error': 'Job bulunamadı'}), 404
+        return jsonify({'success': True, **job})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/jobs/<job_id>/cancel', methods=['POST'])
+@login_required
+def api_job_cancel(job_id):
+    """Kuyruktaki işi iptal et (best-effort)."""
+    try:
+        import jobs as jobq
+        ok = jobq.cancel_job(job_id)
+        return jsonify({'success': ok, 'job_id': job_id, 'status': 'cancelled' if ok else 'not_found'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/jobs/<job_id>/retry', methods=['POST'])
+@login_required
+def api_job_retry(job_id):
+    """Başarısız/iptal işi aynı parametrelerle tekrar kuyruğa al."""
+    try:
+        import jobs as jobq
+        new_id, err = jobq.retry_job(job_id)
+        if new_id:
+            return jsonify({'success': True, 'job_id': new_id, 'status': 'queued'})
+        return jsonify({'success': False, 'error': err or 'Tekrar denenemedi'}), 503
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/workers')
+@login_required
+def api_workers():
+    """Canlı ai-worker'lar (RQ heartbeat + mevcut iş)."""
+    try:
+        import jobs as jobq
+        return jsonify({'success': True, 'queue_reachable': jobq.queue_available(),
+                        'workers': jobq.list_workers()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e), 'workers': []}), 500
+
+
+@app.route('/jobs')
+@login_required
+def jobs_page():
+    """İş kuyruğu sayfası — eğitim/analiz/scan işleri + canlı durum."""
+    return render_template('jobs.html')
+
+
+@app.route('/health')
+def health():
+    """Hafif sağlık kontrolü (auth YOK; Docker healthcheck + izleme için). DB + kuyruk erişimi."""
+    db_ok = False
+    try:
+        from trading_db.session import get_session
+        from sqlalchemy import text as _sql_text
+        with get_session() as s:
+            s.execute(_sql_text('SELECT 1'))
+        db_ok = True
+    except Exception:
+        db_ok = False
+    queue_ok = False
+    try:
+        import jobs as jobq
+        queue_ok = jobq.queue_available()
+    except Exception:
+        queue_ok = False
+    status = 'healthy' if db_ok else 'degraded'
+    code = 200 if db_ok else 503
+    return jsonify({
+        'success': db_ok,
+        'service': 'web-service',
+        'status': status,
+        'database': 'ok' if db_ok else 'down',
+        'queue_reachable': queue_ok,
+    }), code
 
 
 # ─── Market Intelligence API (Faz 4 — minimal; tam API + dashboard Faz 7) ────────────────

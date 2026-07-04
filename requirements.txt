@@ -61,3 +61,7 @@ quantlib==1.31
 
 # Scheduler for weekly fine-tuning
 schedule==1.2.0
+
+# Async iş kuyruğu (web/AI ayrıştırma Faz 2): web enqueue eder, ai-worker yürütür
+redis==5.0.8
+rq==1.16.2
