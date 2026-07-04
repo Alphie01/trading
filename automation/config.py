@@ -42,6 +42,11 @@ class AutomationConfig:
     # Regime + anomaly (Faz 5) — research'e rejim/anomali ekler; anomali yalnız RİSK'i artırır.
     # Default KAPALI (opt-in). KAPALI iken research davranışı AYNEN eskisi.
     REGIME_ANOMALY_ENABLED = _bool("AUTO_REGIME_ANOMALY_ENABLED", "false")
+    # Market microstructure verisi (Faz 6) — order book/funding/OI/korelasyon (ccxt). Default KAPALI.
+    MARKET_DATA_ENABLED = _bool("AUTO_MARKET_DATA_ENABLED", "false")
+    # Multi-timeframe confirmation (Faz 6) — 5m/15m/1h/4h/1d uyum. Default KAPALI.
+    MULTI_TIMEFRAME_ENABLED = _bool("AUTO_MULTI_TIMEFRAME_ENABLED", "false")
+    MULTI_TIMEFRAMES = [s.strip() for s in os.getenv("AUTO_MULTI_TIMEFRAMES", "15m,1h,4h,1d").split(",") if s.strip()]
 
     # Stablecoin base'leri (discovery dışı)
     STABLE_BASES = set(_csv(

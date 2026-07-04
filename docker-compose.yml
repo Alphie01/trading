@@ -121,7 +121,7 @@ volumes:
 # container'dan giden/gelen büyük TLS handshake paketleri parçalanıp bozuluyor → "SSL: WRONG_VERSION_NUMBER"
 # (aralıklı; host çalışır, container çalışmaz). 1400 çoğu ortamda güvenli. Değişince ağ yeniden yaratılmalı:
 #   docker compose down && docker compose up -d
-networks:
-  default:
-    driver_opts:
-      com.docker.network.driver.mtu: 1400
+#networks:
+#  default:
+#    driver_opts:
+#      com.docker.network.driver.mtu: 1400
